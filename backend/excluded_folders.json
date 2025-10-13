@@ -1,0 +1,9 @@
+[
+  "node_modules",
+  ".idea",
+  "docs",
+  ".git",
+  "__pycache__",
+  "fonts",
+  "venv"
+]

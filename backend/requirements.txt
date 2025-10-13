@@ -1,0 +1,16 @@
+# FastAPI framework and server
+fastapi==0.115.0
+uvicorn[standard]==0.31.0
+
+# CORS middleware for Electron communication
+python-multipart==0.0.12
+
+# Type hints and validation
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# File system operations (already in Python, but explicit for clarity)
+pathlib2==2.3.7.post1
+
+# Optional: for better performance
+orjson==3.10.7

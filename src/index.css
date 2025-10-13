@@ -1,8 +1,120 @@
+@import "tailwindcss";
+
+/* Custom CSS variables for themes */
+@theme {
+  /* Light theme colours */
+  --color-light-bg: #f9fafb;
+  --color-light-fg: #1f2937;
+  --color-light-button-bg: #e5e7eb;
+  --color-light-button-fg: #1f2937;
+  --color-light-entry-bg: #ffffff;
+  --color-light-entry-fg: #1f2937;
+  --color-light-highlight: #2563eb;
+  --color-light-label-fg: #4b5563;
+  --color-light-frame-bg: #f3f4f6;
+  --color-light-border: #d1d5db;
+  --color-light-success: #16a34a;
+  --color-light-warning: #d97706;
+  --color-light-accent: #7c3aed;
+
+  /* Dark theme colours */
+  --color-dark-bg: #202124;
+  --color-dark-fg: #d4d4d4;
+  --color-dark-button-bg: #2a2d2e;
+  --color-dark-button-fg: #ffffff;
+  --color-dark-entry-bg: #2f3132;
+  --color-dark-entry-fg: #ffffff;
+  --color-dark-highlight: #3b82f6;
+  --color-dark-label-fg: #aeb0b2;
+  --color-dark-frame-bg: #2a2d2e;
+  --color-dark-border: #3c3c3c;
+  --color-dark-success: #22c55e;
+  --color-dark-warning: #f59e0b;
+  --color-dark-accent: #8b5cf6;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Base styles */
 body {
+  margin: 0;
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    "Roboto",
+    system-ui,
+    -apple-system,
     sans-serif;
-  margin: auto;
-  max-width: 38rem;
-  padding: 2rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-light-bg);
+  color: var(--color-light-fg);
+}
+
+.dark body {
+  background-color: var(--color-dark-bg);
+  color: var(--color-dark-fg);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-light-frame-bg);
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: var(--color-dark-frame-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-light-border);
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-light-label-fg);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-dark-label-fg);
+}
+
+/* Disable text selection for better desktop app feel */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* But allow text selection in input fields */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
