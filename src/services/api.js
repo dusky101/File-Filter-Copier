@@ -7,13 +7,11 @@
 
 import axios from 'axios';
 
-// Base API URL - FastAPI server
 const API_BASE_URL = 'http://localhost:8000/api';
 
-// Create axios instance with default config
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 300000, // 30 second timeout for large folder scans
+  timeout: 300000, // 5 minutes for large/deep scans
   headers: {
     'Content-Type': 'application/json',
   },
@@ -49,43 +47,60 @@ apiClient.interceptors.response.use(
 
 /**
  * Scan a folder with filters and return matching files
- * 
- * @param {Object} filters - Filter configuration
- * @param {string} filters.folder - Source folder path
- * @param {string} filters.size_filter - Size filter (>1KB, <1KB, >500MB, all)
- * @param {string} filters.time_filter - Time filter (<1h, <24h, <7d, <30d, >30d, all)
- * @param {Array<string>} filters.selected_types - Semantic file types to include
- * @param {boolean} filters.deep_scan - Enable deep content scanning
- * @param {Array<string>} filters.deep_scan_terms - Keywords for deep scan
- * @param {string} filters.deep_scan_mode - Match mode (OR/AND)
- * @param {Array<string>} filters.include_exts - Extensions to include
- * @param {Array<string>} filters.exclude_exts - Extensions to exclude
- * @param {Array<string>} filters.excluded_folders - Folder names to exclude
- * @returns {Promise<Object>} Scan results with file list and metadata
+ * Supports optional options.progressId to stream SSE progress.
+ *
+ * @param {Object} filters - filter configuration
+ * @param {Object} [options] - extra options
+ * @param {string} [options.progressId] - progress channel id
+ * @param {number} [options.timeout] - override timeout ms
  */
-export const scanFiles = async (filters) => {
+export const scanFiles = async (filters, options = {}) => {
   try {
-    const response = await apiClient.post('/scan', {
-      folder: filters.folder || '',
-      size_filter: filters.size_filter || '>1KB',
-      time_filter: filters.time_filter || 'all',
-      selected_types: filters.selected_types || [],
-      deep_scan: filters.deep_scan || false,
-      deep_scan_terms: filters.deep_scan_terms || [],
-      deep_scan_mode: filters.deep_scan_mode || 'OR',
-      include_exts: filters.include_exts || null,
-      exclude_exts: filters.exclude_exts || null,
-      excluded_folders: filters.excluded_folders || [],
-    });
+    const headers = {};
+    if (options.progressId) {
+      headers['x-progress-id'] = options.progressId;
+    }
+    const response = await apiClient.post(
+      '/scan',
+      {
+        folder: filters.folder || '',
+        size_filter: filters.size_filter || '>1KB',
+        time_filter: filters.time_filter || 'none',
+        selected_types: filters.selected_types || [],
+        deep_scan: filters.deep_scan || false,
+        deep_scan_terms: filters.deep_scan_terms || [],
+        deep_scan_mode: filters.deep_scan_mode || 'OR',
+        include_exts: filters.include_exts || null,
+        exclude_exts: filters.exclude_exts || null,
+        excluded_folders: filters.excluded_folders || [],
+      },
+      {
+        headers,
+        timeout: options.timeout || apiClient.defaults.timeout,
+      }
+    );
 
-    return {
-      success: true,
-      data: response.data,
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
       error: error.response?.data?.detail || error.message || 'Scan failed',
+    };
+  }
+};
+
+/**
+ * Create a progress channel for deep scans (SSE)
+ * @returns {Promise<{success:boolean, data:{progress_id:string}}>}
+ */
+export const startProgress = async () => {
+  try {
+    const response = await apiClient.post('/progress/start');
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || 'Failed to start progress',
     };
   }
 };
@@ -315,4 +330,5 @@ export default {
   parseExtensions,
   formatFileSize,
   formatTimestamp,
+  startProgress,
 };

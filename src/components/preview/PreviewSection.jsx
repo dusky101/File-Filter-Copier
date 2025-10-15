@@ -321,7 +321,7 @@ const PreviewSection = () => {
                     {showFileType && (
                       <td className="px-4 py-3">
                         <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
-                          {file.semantic_type || "Unclassified"}
+                          {file.semantic_type}
                         </span>
                       </td>
                     )}

@@ -246,7 +246,7 @@ const usePreviewStore = create((set, get) => ({
         `"${file.size_formatted}"`,
         `"${file.modified}"`,
         `"${file.created}"`,
-        `"${file.semantic_type || 'Unclassified'}"`
+        `"${file.semantic_type}"`
       ];
       csv += row.join(',') + '\n';
     });

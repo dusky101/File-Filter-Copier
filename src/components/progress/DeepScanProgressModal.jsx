@@ -3,7 +3,12 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 const percent = (done, total) =>
   total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 0;
 
-export default function DeepScanProgressModal({ open, progressId, onClose }) {
+export default function DeepScanProgressModal({
+  open,
+  progressId,
+  onClose,
+  streamBaseUrl = "http://localhost:8000/api",
+}) {
   const [totalBytes, setTotalBytes] = useState(0);
   const [processedBytes, setProcessedBytes] = useState(0);
   const [totalFiles, setTotalFiles] = useState(0);
@@ -20,7 +25,15 @@ export default function DeepScanProgressModal({ open, progressId, onClose }) {
   useEffect(() => {
     if (!open || !progressId) return;
 
-    const url = `http://localhost:8000/api/progress/${progressId}/stream`;
+    // reset state on each open/progressId
+    setTotalBytes(0);
+    setProcessedBytes(0);
+    setTotalFiles(0);
+    setProcessedFiles(0);
+    setCurrentFile("");
+    setDone(false);
+
+    const url = `${streamBaseUrl}/progress/${progressId}/stream`;
     const es = new EventSource(url, { withCredentials: false });
     esRef.current = es;
 
@@ -32,23 +45,22 @@ export default function DeepScanProgressModal({ open, progressId, onClose }) {
         setTotalFiles(data.total_files || 0);
         setProcessedFiles(data.processed_files || 0);
         setCurrentFile(data.current || "");
-        if (data.done) {
-          setDone(true);
-        }
+        if (data.done) setDone(true);
       } catch {
         // ignore parse errors
       }
     };
 
     es.onerror = () => {
-      // Close on error; prevents reconnection storms
-      es.close();
+      esRef.current?.close();
+      esRef.current = null;
     };
 
     return () => {
-      es.close();
+      esRef.current?.close();
+      esRef.current = null;
     };
-  }, [open, progressId]);
+  }, [open, progressId, streamBaseUrl]);
 
   useEffect(() => {
     if (done && onClose) {
@@ -78,10 +90,11 @@ export default function DeepScanProgressModal({ open, progressId, onClose }) {
 
         <div
           style={barOuterStyle}
+          role="progressbar"
           aria-label="progress-bar"
           aria-valuenow={pct}
-          aria-valuemin="0"
-          aria-valuemax="100"
+          aria-valuemin={0}
+          aria-valuemax={100}
         >
           <div style={{ ...barInnerStyle, width: `${pct}%` }} />
         </div>

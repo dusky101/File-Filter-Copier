@@ -3,7 +3,7 @@
  * Contains all advanced filtering options including extensions, size, file types, and folder exclusions
  */
 
-import React from "react";
+import React, { useState } from "react";
 import {
   Filter,
   ChevronDown,
@@ -29,6 +29,7 @@ const AdvancedFiltersPanel = () => {
   const {
     includeExtensions,
     excludeExtensions,
+    timeFilter,
     sizeFilter,
     selectedFileTypes,
     excludedFolders,
@@ -41,6 +42,7 @@ const AdvancedFiltersPanel = () => {
     showDeepScan,
     setIncludeExtensions,
     setExcludeExtensions,
+    setTimeFilter,
     setSizeFilter,
     toggleFileType,
     toggleExcludedFolder,
@@ -152,6 +154,63 @@ const AdvancedFiltersPanel = () => {
     ],
   };
 
+  const timeOptions = [
+    { value: "none", label: "None", description: "No time filtering" },
+    {
+      value: "<1h",
+      label: "Last 1 hour",
+      description: "Files modified in the last hour",
+    },
+    {
+      value: "<3h",
+      label: "Last 3 hours",
+      description: "Files modified in the last 3 hours",
+    },
+    {
+      value: "<6h",
+      label: "Last 6 hours",
+      description: "Files modified in the last 6 hours",
+    },
+    {
+      value: "<24h",
+      label: "Last 1 day",
+      description: "Files modified in the last day",
+    },
+    {
+      value: "<3d",
+      label: "Last 3 days",
+      description: "Files modified in the last 3 days",
+    },
+    {
+      value: "<5d",
+      label: "Last 5 days",
+      description: "Files modified in the last 5 days",
+    },
+    {
+      value: "<7d",
+      label: "Last 1 week",
+      description: "Files modified in the last week",
+    },
+    {
+      value: "<14d",
+      label: "Last 2 weeks",
+      description: "Files modified in the last 2 weeks",
+    },
+    {
+      value: "<30d",
+      label: "Last 1 month",
+      description: "Files modified in the last month",
+    },
+    {
+      value: ">30d",
+      label: "Older than 30 days",
+      description: "Files modified more than 30 days ago",
+    },
+  ];
+
+  const [customTimeInput, setCustomTimeInput] = useState("");
+  const [customError, setCustomError] = useState("");
+
   // Size options
   const sizeOptions = [
     { value: "all", label: "All Sizes", description: "No size restriction" },
@@ -250,6 +309,92 @@ const AdvancedFiltersPanel = () => {
                 Skip files with these extensions (comma-separated)
               </p>
             </div>
+          </div>
+
+          {/* Time Filter */}
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+              Modified Time
+            </label>
+
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
+              {timeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => {
+                    setCustomError("");
+                    setCustomTimeInput("");
+                    setTimeFilter(opt.value);
+                  }}
+                  title={opt.description}
+                  className={`
+                    px-3 py-2 rounded-xl font-medium text-sm transition-all text-left
+                    ${
+                      timeFilter === opt.value
+                        ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg scale-105"
+                        : "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                    }
+                    `}
+                >
+                  <div className="truncate">{opt.label}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Custom input */}
+            <div className="flex gap-2 items-start">
+              <input
+                type="text"
+                placeholder="Custom (e.g. <10d or >2h)"
+                value={customTimeInput}
+                onChange={(e) => {
+                  setCustomTimeInput(e.target.value);
+                  setCustomError("");
+                }}
+                className="flex-1 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              />
+              <button
+                onClick={() => {
+                  const val = String(customTimeInput || "").trim();
+                  // Accept form like <10d, >2h  -> regex ^[<>]\d+(h|d)$
+                  const valid = /^[<>]\d+(h|d)$/.test(val);
+                  if (!valid) {
+                    setCustomError(
+                      "Invalid format — use < or > then number, then h or d (e.g. <10d)"
+                    );
+                    return;
+                  }
+                  setTimeFilter(val);
+                  setCustomError("");
+                }}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium shadow-sm hover:shadow-md transition-all"
+              >
+                Set
+              </button>
+              <button
+                onClick={() => {
+                  setCustomTimeInput("");
+                  setCustomError("");
+                  setTimeFilter("none");
+                }}
+                className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                title="Reset to none"
+              >
+                Clear
+              </button>
+            </div>
+            {customError && (
+              <div className="mt-2 text-xs text-red-600 dark:text-red-400">
+                {customError}
+              </div>
+            )}
+
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Backend format:{" "}
+              <code className="font-mono px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-700">
+                {"<1h | <24h | <7d | >30d | none"}
+              </code>
+            </p>
           </div>
 
           {/* Size Filter */}

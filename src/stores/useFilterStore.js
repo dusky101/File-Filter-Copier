@@ -25,7 +25,7 @@ const useFilterStore = create(
       sizeFilter: 'all', // 'all', 'small', 'medium', 'large', 'huge'
       
       // Time filter (for future implementation)
-      timeFilter: 'all', // 'all', 'today', 'week', 'month', 'year'
+      timeFilter: "none",
       
       // File type selection (semantic types)
       selectedFileTypes: new Set(),
@@ -70,8 +70,8 @@ const useFilterStore = create(
       setSizeFilter: (size) => set({ sizeFilter: size }),
       
       // Actions: Time Filter
-      setTimeFilter: (time) => set({ timeFilter: time }),
-      
+      setTimeFilter: (val) => set({ timeFilter: val }),  
+          
       // Actions: File Types
       addFileType: (type) =>
         set((state) => ({

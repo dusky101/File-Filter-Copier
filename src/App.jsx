@@ -7,30 +7,30 @@
 
 import React, { useState, useEffect } from "react";
 import { Play, Save, Loader2 } from "lucide-react";
-
-// Import layout components
 import Header from "./components/layout/Header";
 import SettingsPanel from "./components/layout/SettingsPanel";
-
-// Import main section components
 import MainConfigSection from "./components/main-config/MainConfigSection";
 import PreviewSection from "./components/preview/PreviewSection";
 import AdvancedFiltersPanel from "./components/filters/AdvancedFiltersPanel";
-
-// Import stores
 import useFilterStore from "./stores/useFilterStore";
 import usePreviewStore from "./stores/usePreviewStore";
 import useSettingsStore from "./stores/useSettingsStore";
-
-// Import API service
-import { scanFiles, copyFiles, savePreset, healthCheck } from "./services/api";
+import {
+  scanFiles,
+  copyFiles,
+  savePreset,
+  healthCheck,
+  startProgress,
+} from "./services/api";
+import DeepScanProgressModal from "./components/progress/DeepScanProgressModal";
 
 function App() {
-  // Local UI state
   const [showSettings, setShowSettings] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Get state and actions from stores
+  // progress modal state
+  const [progressState, setProgressState] = useState({ open: false, id: null });
+
   const {
     sourceFolder,
     destinationFolder,
@@ -89,43 +89,59 @@ function App() {
     return true;
   };
 
+  // Helper: run scan with optional progress modal
+  const runScanWithOptionalProgress = async (config) => {
+    const hasTerms =
+      Array.isArray(config.deep_scan_terms) &&
+      config.deep_scan_terms.some((t) => String(t || "").trim().length > 0);
+    const wantsProgress = !!config.deep_scan && hasTerms;
+
+    let progressId = null;
+    if (wantsProgress) {
+      const res = await startProgress();
+      if (res.success && res.data?.progress_id) {
+        progressId = res.data.progress_id;
+        setProgressState({ open: true, id: progressId });
+      }
+    }
+
+    try {
+      // pass progressId so backend publishes SSE updates
+      const result = await scanFiles(config, { progressId, timeout: 300000 });
+      return result;
+    } finally {
+      // The modal auto-closes when SSE marks done; also ensure manual close fallback
+      setTimeout(() => setProgressState((s) => ({ ...s, open: false })), 500);
+    }
+  };
+
   /**
    * Handle preview/scan operation
    */
   const handlePreview = async () => {
-    if (!validateInputs()) {
-      return;
-    }
+    if (!validateInputs()) return;
 
     setLoading(true);
     setError(null);
     clearPreview();
 
     try {
-      // Get filter configuration from store
       const config = getFilterConfig();
-
       console.log("🔍 Scanning with config:", config);
 
-      // Call scan API
-      const result = await scanFiles(config);
+      const result = await runScanWithOptionalProgress(config);
 
       if (result.success) {
         setFiles(result.data.files);
         setDuplicates(result.data.duplicates);
 
-        // Show success message
         const fileCount = result.data.total_files;
         const duplicateCount = Object.keys(result.data.duplicates || {}).length;
 
         let message = `✅ Found ${fileCount} file${fileCount !== 1 ? "s" : ""}!`;
-
         if (duplicateCount > 0) {
-          message += `\n\n⚠️ Warning: ${duplicateCount} duplicate filename${
-            duplicateCount !== 1 ? "s" : ""
-          } detected.`;
+          message += `\n\n⚠️ ${duplicateCount} duplicate filename${duplicateCount !== 1 ? "s" : ""} detected.`;
         }
-
         alert(message);
       } else {
         setError(result.error || "Failed to scan files");
@@ -146,36 +162,28 @@ function App() {
    * Handle copy operation
    */
   const handleCopy = async () => {
-    if (!validateInputs()) {
-      return;
-    }
+    if (!validateInputs()) return;
 
     setIsProcessing(true);
-
     try {
-      // Get filter configuration
       const config = getFilterConfig();
-
       console.log("📋 Copying with config:", config);
 
-      // First scan to get files
-      const scanResult = await scanFiles(config);
-
+      const scanResult = await runScanWithOptionalProgress(config);
       if (!scanResult.success || scanResult.data.files.length === 0) {
         alert("❌ No files to copy. Run a preview first.");
         setIsProcessing(false);
         return;
       }
 
-      // Prepare copy request
       const filePaths = scanResult.data.files.map((f) => f.path);
       const copyRequest = {
         files: filePaths,
         destination: destinationFolder,
-        output_folder: outputFolderName,
+        // FIX: use outputFolder (what api.js expects)
+        outputFolder: outputFolderName,
       };
 
-      // Call copy API
       const copyResult = await copyFiles(copyRequest);
 
       if (copyResult.success) {
@@ -261,6 +269,13 @@ function App() {
 
         {/* Advanced Filters Panel */}
         <AdvancedFiltersPanel />
+
+        {/* Progress Modal */}
+        <DeepScanProgressModal
+          open={progressState.open}
+          progressId={progressState.id}
+          onClose={() => setProgressState({ open: false, id: null })}
+        />
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
