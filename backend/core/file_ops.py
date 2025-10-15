@@ -5,8 +5,21 @@ import shutil
 from core.utils import format_size, format_timestamp, safe_filename, ensure_unique_path
 
 def copy_files_and_log(file_tuples, output_folder):
+    """
+    Copy files to output folder and create a log file.
+    
+    Parameters:
+    - file_tuples: list of (file_path, semantic_type) tuples
+    - output_folder: destination folder path (already includes custom output folder name)
+    
+    Returns:
+    - log_file_path: path to the generated log file
+    """
     log_lines = []
     count = 0
+
+    # Ensure output folder exists
+    os.makedirs(output_folder, exist_ok=True)
 
     for file_path, semantic_type in file_tuples:
         try:

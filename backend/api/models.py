@@ -11,7 +11,7 @@ class ScanRequest(BaseModel):
     """Request model for scanning files with filters"""
     folder: str = Field(..., description="Source folder path to scan")
     size_filter: str = Field(default=">1KB", description="Size filter (>1KB, <1KB, >500MB, all)")
-    time_filter: str = Field(default="none", description="Time filter (<1h, <24h, <7d, <30d, >30d, none)")
+    time_filter: str = Field(default="all", description="Time filter (<1h, <24h, <7d, <30d, >30d, all)")
     selected_types: List[str] = Field(default=[], description="List of semantic file types to include")
     deep_scan: bool = Field(default=False, description="Enable deep content scanning")
     deep_scan_terms: List[str] = Field(default=[], description="Keywords to search for in deep scan")

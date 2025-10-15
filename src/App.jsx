@@ -1,115 +1,333 @@
-import React, { useState, useEffect } from "react";
-import { FolderOpen, Play, Save, Download } from "lucide-react";
-
 /**
  * Main Application Component
  *
- * This is the root component that orchestrates the entire File Filter Copier app.
- * It manages global state, theme switching, and coordinates all child components.
+ * Orchestrates the entire File Filter Copier application with modular components
+ * Manages global state through Zustand stores and coordinates API operations
  */
+
+import React, { useState, useEffect } from "react";
+import { Play, Save, Loader2 } from "lucide-react";
+
+// Import layout components
+import Header from "./components/layout/Header";
+import SettingsPanel from "./components/layout/SettingsPanel";
+
+// Import main section components
+import MainConfigSection from "./components/main-config/MainConfigSection";
+import PreviewSection from "./components/preview/PreviewSection";
+import AdvancedFiltersPanel from "./components/filters/AdvancedFiltersPanel";
+
+// Import stores
+import useFilterStore from "./stores/useFilterStore";
+import usePreviewStore from "./stores/usePreviewStore";
+import useSettingsStore from "./stores/useSettingsStore";
+
+// Import API service
+import { scanFiles, copyFiles, savePreset, healthCheck } from "./services/api";
+
 function App() {
-  // Theme state
-  const [theme, setTheme] = useState("light");
+  // Local UI state
+  const [showSettings, setShowSettings] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Filter states
-  const [sourceFolder, setSourceFolder] = useState("");
-  const [sizeFilter, setSizeFilter] = useState(">1KB");
+  // Get state and actions from stores
+  const {
+    sourceFolder,
+    destinationFolder,
+    outputFolderName,
+    dryRun,
+    getFilterConfig,
+  } = useFilterStore();
 
-  // Apply theme to document root
+  const { setFiles, setDuplicates, setLoading, setError, clearPreview } =
+    usePreviewStore();
+
+  const { animationsEnabled } = useSettingsStore();
+
+  /**
+   * Check backend health on mount
+   */
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
-  }, [theme]);
+    checkBackendHealth();
+  }, []);
 
-  // Toggle theme handler
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+  /**
+   * Check if FastAPI backend is running
+   */
+  const checkBackendHealth = async () => {
+    try {
+      const result = await healthCheck();
+      if (!result.success) {
+        console.warn("Backend health check failed");
+      }
+    } catch (error) {
+      console.error("Backend is not responding:", error);
+    }
+  };
+
+  /**
+   * Validate required fields
+   */
+  const validateInputs = () => {
+    if (!sourceFolder || !sourceFolder.trim()) {
+      alert("⚠️ Please select a source folder");
+      return false;
+    }
+
+    if (!dryRun) {
+      if (!destinationFolder || !destinationFolder.trim()) {
+        alert("⚠️ Please select a destination folder");
+        return false;
+      }
+
+      if (!outputFolderName || !outputFolderName.trim()) {
+        alert("⚠️ Please enter an output folder name");
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  /**
+   * Handle preview/scan operation
+   */
+  const handlePreview = async () => {
+    if (!validateInputs()) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    clearPreview();
+
+    try {
+      // Get filter configuration from store
+      const config = getFilterConfig();
+
+      console.log("🔍 Scanning with config:", config);
+
+      // Call scan API
+      const result = await scanFiles(config);
+
+      if (result.success) {
+        setFiles(result.data.files);
+        setDuplicates(result.data.duplicates);
+
+        // Show success message
+        const fileCount = result.data.total_files;
+        const duplicateCount = Object.keys(result.data.duplicates || {}).length;
+
+        let message = `✅ Found ${fileCount} file${fileCount !== 1 ? "s" : ""}!`;
+
+        if (duplicateCount > 0) {
+          message += `\n\n⚠️ Warning: ${duplicateCount} duplicate filename${
+            duplicateCount !== 1 ? "s" : ""
+          } detected.`;
+        }
+
+        alert(message);
+      } else {
+        setError(result.error || "Failed to scan files");
+        alert(`❌ Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Preview failed:", error);
+      const errorMessage =
+        "Failed to preview files. Make sure the backend is running.";
+      setError(errorMessage);
+      alert(`❌ ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Handle copy operation
+   */
+  const handleCopy = async () => {
+    if (!validateInputs()) {
+      return;
+    }
+
+    setIsProcessing(true);
+
+    try {
+      // Get filter configuration
+      const config = getFilterConfig();
+
+      console.log("📋 Copying with config:", config);
+
+      // First scan to get files
+      const scanResult = await scanFiles(config);
+
+      if (!scanResult.success || scanResult.data.files.length === 0) {
+        alert("❌ No files to copy. Run a preview first.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // Prepare copy request
+      const filePaths = scanResult.data.files.map((f) => f.path);
+      const copyRequest = {
+        files: filePaths,
+        destination: destinationFolder,
+        output_folder: outputFolderName,
+      };
+
+      // Call copy API
+      const copyResult = await copyFiles(copyRequest);
+
+      if (copyResult.success) {
+        alert(
+          `✅ Successfully copied ${copyResult.data.copied_count} file${
+            copyResult.data.copied_count !== 1 ? "s" : ""
+          }!\n\nOutput: ${copyResult.data.output_path}`
+        );
+      } else {
+        alert(`❌ Copy failed: ${copyResult.error}`);
+      }
+    } catch (error) {
+      console.error("Copy failed:", error);
+      alert("❌ Failed to copy files. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  /**
+   * Handle main action button
+   */
+  const handleRun = () => {
+    if (dryRun) {
+      handlePreview();
+    } else {
+      handleCopy();
+    }
+  };
+
+  /**
+   * Handle save preset
+   */
+  const handleSavePreset = async () => {
+    const presetName = prompt("Enter a name for this preset:");
+
+    if (!presetName || !presetName.trim()) {
+      return;
+    }
+
+    try {
+      const config = getFilterConfig();
+      const result = await savePreset(presetName, config);
+
+      if (result.success) {
+        alert(`✅ Preset "${presetName}" saved successfully!`);
+      } else {
+        alert(`❌ Failed to save preset: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Save preset failed:", error);
+      alert("❌ Failed to save preset. Please try again.");
+    }
+  };
+
+  /**
+   * Check if run button should be disabled
+   */
+  const isRunDisabled = () => {
+    if (isProcessing) return true;
+    if (!sourceFolder) return true;
+    if (!dryRun && (!destinationFolder || !outputFolderName)) return true;
+    return false;
   };
 
   return (
-    <div className="min-h-screen bg-light-bg dark:bg-dark-bg text-light-fg dark:text-dark-fg transition-colors p-6">
-      {/* Header */}
-      <header className="mb-8 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <FolderOpen className="w-8 h-8 text-light-highlight dark:text-dark-highlight" />
-          <h1 className="text-2xl font-bold">File Filter Copier</h1>
-        </div>
-        <button
-          onClick={toggleTheme}
-          className="px-4 py-2 bg-light-button-bg dark:bg-dark-button-bg hover:bg-light-highlight dark:hover:bg-dark-highlight text-light-button-fg dark:text-dark-button-fg rounded-lg transition-colors"
-        >
-          🌙 {theme === "light" ? "Dark" : "Light"} Mode
-        </button>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <Header onSettingsClick={() => setShowSettings(true)} />
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto">
-        <div className="bg-light-frame-bg dark:bg-dark-frame-bg rounded-lg p-6 shadow-lg">
-          <h2 className="text-xl font-bold mb-4">
-            Welcome to File Filter Copier
-          </h2>
-          <p className="text-light-label-fg dark:text-dark-label-fg mb-4">
-            This is your new React + Electron app. The setup is complete!
+        {/* Settings Panel */}
+        <SettingsPanel
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+        />
+
+        {/* Main Configuration Section */}
+        <MainConfigSection />
+
+        {/* Preview Section (only shown when dry run is enabled) */}
+        <PreviewSection />
+
+        {/* Advanced Filters Panel */}
+        <AdvancedFiltersPanel />
+
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <button
+            onClick={handleRun}
+            disabled={isRunDisabled()}
+            className={`
+              flex-1 flex items-center justify-center gap-3 px-6 py-4
+              bg-gradient-to-r from-green-600 to-emerald-600 text-white 
+              rounded-2xl shadow-xl hover:shadow-2xl font-semibold text-lg
+              focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+              disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-xl
+              ${animationsEnabled ? "transition-all hover:scale-[1.02]" : ""}
+            `}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Play className="w-6 h-6" />
+                {dryRun ? "Run Preview" : "Copy Files"}
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleSavePreset}
+            disabled={isProcessing}
+            className={`
+              px-6 py-4 flex items-center justify-center gap-2
+              bg-gradient-to-r from-blue-600 to-purple-600 text-white 
+              rounded-2xl shadow-xl hover:shadow-2xl font-semibold
+              focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+              disabled:opacity-50 disabled:cursor-not-allowed
+              ${animationsEnabled ? "transition-all hover:scale-[1.02]" : ""}
+            `}
+          >
+            <Save className="w-5 h-5" />
+            Save Preset
+          </button>
+        </div>
+
+        {/* Backend Status Indicator */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
+          <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
+            <span className="flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            <span>
+              <strong>Backend:</strong> Ensure FastAPI is running on{" "}
+              <code className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono text-xs">
+                http://localhost:8000
+              </code>
+            </span>
           </p>
-
-          {/* Source Folder Input */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">
-              Source Folder:
-            </label>
-            <input
-              type="text"
-              value={sourceFolder}
-              onChange={(e) => setSourceFolder(e.target.value)}
-              placeholder="Select a folder..."
-              className="w-full px-4 py-2 bg-light-entry-bg dark:bg-dark-entry-bg border border-light-border dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-light-highlight dark:focus:ring-dark-highlight"
-            />
-          </div>
-
-          {/* Size Filter */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium mb-2">File Size:</label>
-            <div className="flex gap-4">
-              {[">1KB", "<1KB", ">500MB", "All Sizes"].map((option) => (
-                <label
-                  key={option}
-                  className="flex items-center gap-2 cursor-pointer"
-                >
-                  <input
-                    type="radio"
-                    name="sizeFilter"
-                    value={option}
-                    checked={sizeFilter === option}
-                    onChange={(e) => setSizeFilter(e.target.value)}
-                    className="w-4 h-4"
-                  />
-                  <span className="text-sm">{option}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            <button className="flex items-center gap-2 px-4 py-2 bg-light-success dark:bg-dark-success text-white rounded-lg hover:opacity-90 transition-opacity">
-              <Play className="w-4 h-4" />
-              Run
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-light-warning dark:bg-dark-warning text-white rounded-lg hover:opacity-90 transition-opacity">
-              <Download className="w-4 h-4" />
-              Export
-            </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-light-accent dark:bg-dark-accent text-white rounded-lg hover:opacity-90 transition-opacity">
-              <Save className="w-4 h-4" />
-              Save Preset
-            </button>
-          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 pl-4">
+            Run:{" "}
+            <code className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono">
+              cd backend && source venv/bin/activate && python main.py
+            </code>
+          </p>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

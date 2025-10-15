@@ -6,6 +6,7 @@ Main application entry point for the FastAPI server
 import os
 import sys
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -16,13 +17,38 @@ sys.path.insert(0, str(backend_dir))
 
 from api.routes import router
 
-# Initialize FastAPI app
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan event handler for startup and shutdown actions.
+    This replaces the deprecated @app.on_event decorators.
+    """
+    # Startup
+    print("=" * 60)
+    print("🚀 File Filter Copier API Starting...")
+    print("=" * 60)
+    print(f"📁 Backend Directory: {backend_dir}")
+    print(f"📖 API Documentation: http://localhost:8000/docs")
+    print(f"🔍 Health Check: http://localhost:8000/api/health")
+    print("=" * 60)
+    
+    yield  # Server is running
+    
+    # Shutdown
+    print("\n" + "=" * 60)
+    print("🛑 File Filter Copier API Shutting Down...")
+    print("=" * 60)
+
+
+# Initialize FastAPI app with lifespan handler
 app = FastAPI(
     title="File Filter Copier API",
     description="Backend API for File Filter Copier - A semantic file filtering and copying tool",
     version="2.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan  # New lifespan handler
 )
 
 # Configure CORS for Electron app
@@ -55,30 +81,6 @@ async def root():
         "docs": "/docs",
         "health": "/api/health"
     }
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Actions to perform when the FastAPI server starts
-    """
-    print("=" * 60)
-    print("🚀 File Filter Copier API Starting...")
-    print("=" * 60)
-    print(f"📁 Backend Directory: {backend_dir}")
-    print(f"📖 API Documentation: http://localhost:8000/docs")
-    print(f"🔍 Health Check: http://localhost:8000/api/health")
-    print("=" * 60)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Actions to perform when the FastAPI server shuts down
-    """
-    print("\n" + "=" * 60)
-    print("🛑 File Filter Copier API Shutting Down...")
-    print("=" * 60)
 
 
 if __name__ == "__main__":

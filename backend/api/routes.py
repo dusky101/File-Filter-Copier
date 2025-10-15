@@ -4,21 +4,22 @@ FastAPI endpoints for file scanning, filtering, and copying operations
 """
 
 import os
-from typing import List
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
+import sys
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # Import core functionality
-import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from core.filters import filter_files
+from core.filters import filter_files, SIZE_FILTERS  # expose SIZE_FILTERS for estimation
 from core.file_ops import copy_files_and_log
 from core.duplicate_checker import detect_duplicates
 from core.utils import format_size, format_timestamp
 from features.extension_filter import filter_by_extension
 from features.hidden_filter import filter_hidden_files
+from api.progress import manager  # new
 from features.preset_manager import save_preset, load_preset, list_presets, delete_preset
+
 
 from api.models import (
     ScanRequest, 
@@ -32,24 +33,104 @@ from api.models import (
 
 router = APIRouter()
 
+@router.post("/progress/start")
+async def start_progress_channel():
+    """
+    Create a progress channel before starting a deep scan.
+    Frontend will receive a progress_id to subscribe via SSE.
+    """
+    # initialize empty; will be set by /scan when it estimates
+    pid = manager.create(total_files=0, total_bytes=0)
+    return {"progress_id": pid}
+
+@router.get("/progress/{pid}/stream")
+async def stream_progress(pid: str):
+    """
+    Server-Sent Events stream of deep-scan progress updates.
+    """
+    return StreamingResponse(manager.stream(pid), media_type="text/event-stream")
 
 @router.post("/scan", response_model=ScanResponse)
-async def scan_files(request: ScanRequest):
+async def scan_files(request: ScanRequest, http_req: Request):
     """
     Scan a folder and return matching files based on filters.
-    
-    This endpoint performs the same filtering logic as the original Python app's
-    preview functionality, including size, time, semantic type, and deep scan filters.
+    If header 'x-progress-id' is provided and deep_scan enabled, SSE updates are published.
     """
     try:
         # Validate folder exists
         if not os.path.exists(request.folder):
-            raise HTTPException(status_code=404, detail=f"Folder not found: {request.folder}")
-        
+            raise HTTPException(status_code=400, detail="Source folder not found")
         if not os.path.isdir(request.folder):
-            raise HTTPException(status_code=400, detail=f"Path is not a directory: {request.folder}")
+            raise HTTPException(status_code=400, detail="Source path is not a directory")
 
-        # Step 1: Apply core filters
+        # Optional progress channel
+        progress_id = http_req.headers.get("x-progress-id")
+        use_progress = bool(progress_id and request.deep_scan and request.deep_scan_terms)
+
+        # If progress requested, estimate candidate files for deep scan and set totals
+        # We reuse filter_files without deep scan to get candidate list, then apply ext+hidden filters.
+        if use_progress:
+            # Candidate pass 1: size/time only
+            prelim = filter_files(
+                request.folder,
+                request.size_filter,
+                request.time_filter,
+                request.selected_types,  # extension/semantic gating if provided
+                deep_scan=False,
+                deep_scan_term=None
+            )
+            prelim_paths = [p for p, _ in prelim]
+
+            # Extension filters
+            prelim_paths = filter_by_extension(
+                prelim_paths,
+                include_exts=request.include_exts,
+                exclude_exts=request.exclude_exts
+            )
+
+            # Hidden/system/excluded folders
+            prelim_paths = filter_hidden_files(
+                prelim_paths,
+                exclude_dotfiles=True,
+                exclude_system=True,
+                exclude_hidden_dirs=True,
+                exclude_folders=True,
+                excluded_folder_names=set(request.excluded_folders or [])
+            )
+
+            total_files = len(prelim_paths)
+            total_bytes = 0
+            for p in prelim_paths:
+                try:
+                    total_bytes += os.path.getsize(p)
+                except Exception:
+                    pass
+
+            ch = manager.get(progress_id)
+            if ch:
+                ch.total_files = total_files
+                ch.total_bytes = total_bytes
+                await ch.emit()
+
+        # Step 1: Apply core filters (with optional progress callback)
+        def progress_cb(event: str, path: str, bytes_inc: int):
+            # bridge to async manager methods
+            if not use_progress:
+                return
+            # schedule on event loop
+            loop = None
+            try:
+                import asyncio
+                loop = asyncio.get_event_loop()
+            except Exception:
+                pass
+            if not loop or loop.is_closed():
+                return
+            if event == "current":
+                loop.create_task(manager.set_current(progress_id, path))
+            elif event == "advance":
+                loop.create_task(manager.advance(progress_id, bytes_inc))
+
         raw_files = filter_files(
             request.folder,
             request.size_filter,
@@ -57,7 +138,8 @@ async def scan_files(request: ScanRequest):
             request.selected_types,
             deep_scan=request.deep_scan,
             deep_scan_term=request.deep_scan_terms,
-            deep_scan_mode=request.deep_scan_mode
+            deep_scan_mode=request.deep_scan_mode,
+            progress_callback=progress_cb
         )
 
         # Step 2: Apply extension filters
@@ -74,32 +156,35 @@ async def scan_files(request: ScanRequest):
             exclude_system=True,
             exclude_hidden_dirs=True,
             exclude_folders=True,
-            excluded_folder_names=set(request.excluded_folders)
+            excluded_folder_names=set(request.excluded_folders or [])
         )
 
         # Step 4: Map semantic types back to filtered paths
         semantic_map = {path: sem for path, sem in raw_files}
-        
+
         # Step 5: Build file results with metadata
         file_results = []
         for path in filtered_paths:
             try:
-                stats = os.stat(path)
+                name = os.path.basename(path)
+                size = os.path.getsize(path)
+                size_fmt = format_size(size)
+                modified = format_timestamp(os.path.getmtime(path))
+                created = format_timestamp(os.path.getctime(path))
+                sem = semantic_map.get(path)
                 file_results.append(FileResult(
-                    path=path,
-                    name=os.path.basename(path),
-                    size=stats.st_size,
-                    size_formatted=format_size(stats.st_size),
-                    modified=format_timestamp(stats.st_mtime),
-                    created=format_timestamp(stats.st_ctime),
-                    semantic_type=semantic_map.get(path)
+                    path=path, name=name, size=size, size_formatted=size_fmt,
+                    modified=modified, created=created, semantic_type=sem
                 ))
-            except Exception as e:
-                print(f"Warning: Could not get stats for {path}: {e}")
+            except Exception:
                 continue
 
         # Step 6: Detect duplicates
         duplicates, _ = detect_duplicates(filtered_paths)
+
+        # Finish progress channel if used
+        if use_progress:
+            await manager.finish(progress_id)
 
         return ScanResponse(
             success=True,
@@ -109,8 +194,13 @@ async def scan_files(request: ScanRequest):
         )
 
     except HTTPException:
+        # Finish channel on error
+        if 'progress_id' in locals() and http_req.headers.get("x-progress-id"):
+            await manager.finish(http_req.headers.get("x-progress-id"))
         raise
     except Exception as e:
+        if 'progress_id' in locals() and http_req.headers.get("x-progress-id"):
+            await manager.finish(http_req.headers.get("x-progress-id"))
         return ScanResponse(
             success=False,
             total_files=0,
@@ -133,7 +223,8 @@ async def copy_files(request: CopyRequest):
         if not os.path.exists(request.destination):
             raise HTTPException(status_code=404, detail=f"Destination not found: {request.destination}")
 
-        # Create output folder
+        # FIXED: Create output folder with CUSTOM NAME from request
+        # This was the bug - it wasn't using request.output_folder
         output_path = os.path.join(request.destination, request.output_folder)
         os.makedirs(output_path, exist_ok=True)
 

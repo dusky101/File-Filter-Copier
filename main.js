@@ -1,56 +1,113 @@
-import { app, BrowserWindow } from 'electron';
-import path from 'node:path';
-import started from 'electron-squirrel-startup';
+/**
+ * Electron Main Process
+ * 
+ * Handles window creation, IPC communication, and native OS integrations
+ * Provides folder selection dialog through IPC
+ */
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (started) {
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const path = require('path');
+
+// Handle creating/removing shortcuts on Windows when installing/uninstalling
+if (require('electron-squirrel-startup')) {
   app.quit();
 }
 
+let mainWindow;
+
+/**
+ * Create the main application window
+ */
 const createWindow = () => {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     },
+    backgroundColor: '#f8fafc',
+    show: false, // Don't show until ready
+    titleBarStyle: 'default'
   });
 
-  // and load the index.html of the app.
+  // Load the app
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // Show window when ready
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  // Open DevTools in development
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.webContents.openDevTools();
+  }
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  createWindow();
-
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+/**
+ * IPC Handler: Open folder selection dialog
+ */
+ipcMain.handle('dialog:openFolder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select Folder',
+    buttonLabel: 'Select'
   });
+  
+  return result;
 });
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+/**
+ * IPC Handler: Get app version
+ */
+ipcMain.handle('app:getVersion', () => {
+  return app.getVersion();
+});
+
+/**
+ * App ready event
+ */
+app.on('ready', createWindow);
+
+/**
+ * Quit when all windows are closed (except on macOS)
+ */
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
+/**
+ * On macOS, re-create window when dock icon is clicked
+ */
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  }
+});
+
+/**
+ * Additional app configurations
+ */
+
+// Disable hardware acceleration if needed for compatibility
+// app.disableHardwareAcceleration();
+
+// Set app user model ID for Windows
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.filefiltercopier.app');
+}
+
+console.log('✅ Electron main process started');
+console.log('📁 App path:', app.getAppPath());
+console.log('🖥️  Platform:', process.platform);

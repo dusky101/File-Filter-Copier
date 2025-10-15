@@ -3,7 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ...existing code... -->
+    <meta name="color-scheme" content="light dark" />
     <title>File Filter Copier</title>
+    <!-- Apply saved/system theme before React mounts -->
+    <script>
+      (function () {
+        try {
+          const stored = localStorage.getItem('theme'); // keep in sync with your store key
+          const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const useDark = stored === 'dark' || (!stored || stored === 'system') && systemPrefersDark;
+          document.documentElement.classList.toggle('dark', useDark);
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
