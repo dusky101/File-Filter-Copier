@@ -23,7 +23,8 @@ import {
   startProgress,
 } from "./services/api";
 import DeepScanProgressModal from "./components/progress/DeepScanProgressModal";
-
+import PresetNameDialog from "./utils/PresetNameDialog";
+import { Button } from "./ui/button";
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -41,6 +42,8 @@ function App() {
 
   const { setFiles, setDuplicates, setLoading, setError, clearPreview } =
     usePreviewStore();
+
+  const [showPresetDialog, setShowPresetDialog] = useState(false);
 
   const { animationsEnabled } = useSettingsStore();
 
@@ -217,25 +220,24 @@ function App() {
   /**
    * Handle save preset
    */
-  const handleSavePreset = async () => {
-    const presetName = prompt("Enter a name for this preset:");
+  const handleSavePreset = () => {
+    setShowPresetDialog(true);
+  };
 
-    if (!presetName || !presetName.trim()) {
-      return;
-    }
-
+  const handleConfirmSavePreset = async (presetName) => {
     try {
       const config = getFilterConfig();
       const result = await savePreset(presetName, config);
 
       if (result.success) {
-        alert(`✅ Preset "${presetName}" saved successfully!`);
+        console.log(`✅ Preset "${presetName}" saved successfully!`);
       } else {
-        alert(`❌ Failed to save preset: ${result.error}`);
+        console.error(`❌ Failed to save preset: ${result.error}`);
       }
     } catch (error) {
       console.error("Save preset failed:", error);
-      alert("❌ Failed to save preset. Please try again.");
+    } finally {
+      setShowPresetDialog(false);
     }
   };
 
@@ -276,6 +278,12 @@ function App() {
           progressId={progressState.id}
           onClose={() => setProgressState({ open: false, id: null })}
         />
+        {/* Preset Name Dialog */}
+        <PresetNameDialog
+          open={showPresetDialog}
+          onClose={() => setShowPresetDialog(false)}
+          onSave={handleConfirmSavePreset}
+        />
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -308,16 +316,16 @@ function App() {
             onClick={handleSavePreset}
             disabled={isProcessing}
             className={`
-              px-6 py-4 flex items-center justify-center gap-2
+              group relative px-6 py-4 flex items-center justify-center gap-2
               bg-gradient-to-r from-blue-600 to-purple-600 text-white 
-              rounded-2xl shadow-xl hover:shadow-2xl font-semibold
+              rounded-2xl shadow-lg hover:shadow-xl font-semibold
               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
               disabled:opacity-50 disabled:cursor-not-allowed
               ${animationsEnabled ? "transition-all hover:scale-[1.02]" : ""}
             `}
           >
-            <Save className="w-5 h-5" />
-            Save Preset
+            <Save className="w-5 h-5 transition-transform group-hover:rotate-6" />
+            <span>Save Preset</span>
           </button>
         </div>
 

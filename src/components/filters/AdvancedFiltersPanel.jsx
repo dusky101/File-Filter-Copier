@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
+import { fileTypeGroups } from "../../utils/fileTypes";
 
 const AdvancedFiltersPanel = () => {
   const {
@@ -58,101 +59,6 @@ const AdvancedFiltersPanel = () => {
   } = useFilterStore();
 
   const { animationsEnabled } = useSettingsStore();
-
-  // File type groups with icons and extensions
-  const fileTypeGroups = {
-    Documents: [
-      {
-        name: "Text Documents",
-        icon: FileText,
-        types: [".txt", ".doc", ".docx", ".pdf", ".rtf", ".odt"],
-      },
-      {
-        name: "Spreadsheets",
-        icon: FileText,
-        types: [".xls", ".xlsx", ".csv", ".ods"],
-      },
-      {
-        name: "Presentations",
-        icon: FileText,
-        types: [".ppt", ".pptx", ".odp", ".key"],
-      },
-    ],
-    Media: [
-      {
-        name: "Images",
-        icon: Image,
-        types: [
-          ".jpg",
-          ".jpeg",
-          ".png",
-          ".gif",
-          ".svg",
-          ".bmp",
-          ".webp",
-          ".ico",
-        ],
-      },
-      {
-        name: "Audio",
-        icon: Music,
-        types: [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"],
-      },
-      {
-        name: "Video",
-        icon: Video,
-        types: [".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm"],
-      },
-    ],
-    Development: [
-      {
-        name: "Code",
-        icon: Code,
-        types: [
-          ".js",
-          ".py",
-          ".java",
-          ".cpp",
-          ".c",
-          ".rb",
-          ".go",
-          ".rs",
-          ".swift",
-        ],
-      },
-      {
-        name: "Web",
-        icon: Code,
-        types: [
-          ".html",
-          ".css",
-          ".jsx",
-          ".tsx",
-          ".vue",
-          ".scss",
-          ".sass",
-          ".less",
-        ],
-      },
-      {
-        name: "Config",
-        icon: FileText,
-        types: [".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".conf"],
-      },
-      {
-        name: "Scripts",
-        icon: File,
-        types: [".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd"],
-      },
-    ],
-    Archives: [
-      {
-        name: "Compressed",
-        icon: Archive,
-        types: [".zip", ".rar", ".tar", ".gz", ".7z", ".bz2", ".xz"],
-      },
-    ],
-  };
 
   const timeOptions = [
     { value: "none", label: "None", description: "No time filtering" },

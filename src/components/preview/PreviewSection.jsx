@@ -18,6 +18,7 @@ import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
 import { exportPreview } from "../../utils/exportUtils";
+import { getFileLabelFromName } from "../../utils/fileTypes";
 
 const PreviewSection = () => {
   const {
@@ -37,8 +38,6 @@ const PreviewSection = () => {
     toggleFileSelection,
     selectAll,
     deselectAll,
-    exportAsText,
-    exportAsCSV,
   } = usePreviewStore();
 
   const { dryRun } = useFilterStore();
@@ -50,6 +49,7 @@ const PreviewSection = () => {
     showFullPath,
     animationsEnabled,
     defaultExportFormat,
+    includeMetadataInExport, // add this from settings
   } = useSettingsStore();
 
   const paginatedFiles = getPaginatedFiles();
@@ -65,34 +65,16 @@ const PreviewSection = () => {
    */
   const handleExport = () => {
     try {
-      let content = "";
-      let filename = "";
-      let mimeType = "";
-
-      if (defaultExportFormat === "csv") {
-        content = exportAsCSV();
-        filename = `file-filter-results-${Date.now()}.csv`;
-        mimeType = "text/csv";
-      } else if (defaultExportFormat === "json") {
-        content = JSON.stringify({ files: filteredFiles, duplicates }, null, 2);
-        filename = `file-filter-results-${Date.now()}.json`;
-        mimeType = "application/json";
-      } else {
-        content = exportAsText();
-        filename = `file-filter-results-${Date.now()}.txt`;
-        mimeType = "text/plain";
-      }
-
-      // Create blob and download
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      exportPreview(
+        filteredFiles,
+        duplicates,
+        defaultExportFormat, // 'txt' | 'csv' | 'json' | 'md' | 'html'
+        {
+          includeMetadata: includeMetadataInExport,
+          useTimestamp: true,
+          // groupByType: false, // optional future flag
+        }
+      );
     } catch (error) {
       console.error("Export failed:", error);
       alert("Failed to export preview results.");
@@ -275,6 +257,12 @@ const PreviewSection = () => {
                       Type {renderSortIcon("type")}
                     </th>
                   )}
+                  {/* New Label column (non-sortable for now) */}
+                  {showFileType && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                      Label
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -322,6 +310,13 @@ const PreviewSection = () => {
                       <td className="px-4 py-3">
                         <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
                           {file.semantic_type}
+                        </span>
+                      </td>
+                    )}
+                    {showFileType && (
+                      <td className="px-4 py-3">
+                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
+                          {getFileLabelFromName(file.name || file.path)}
                         </span>
                       </td>
                     )}

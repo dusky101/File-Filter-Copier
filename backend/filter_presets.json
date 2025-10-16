@@ -1,0 +1,23 @@
+{
+  "fs": {
+    "folder": "/Users/marc/Downloads/FilteredFiles",
+    "size_filter": "all",
+    "time_filter": "<3h",
+    "selected_types": [],
+    "deep_scan": false,
+    "deep_scan_terms": [],
+    "deep_scan_mode": "ANY",
+    "include_exts": [],
+    "exclude_exts": [],
+    "excluded_folders": [
+      "node_modules",
+      "venv",
+      ".git",
+      "__pycache__",
+      ".idea",
+      "dist",
+      "build",
+      ".vscode"
+    ]
+  }
+}

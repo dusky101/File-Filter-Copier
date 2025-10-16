@@ -1,3 +1,5 @@
+import { getFileLabelFromName } from "./fileTypes";
+
 /**
  * Export Utilities
  * Handles exporting preview results to various formats: TXT, CSV, JSON, Markdown, PDF
@@ -45,12 +47,14 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
     // Flat list
     files.forEach(file => {
       const type = file.semantic_type || 'Unclassified';
-      output += `${file.name}  ←  ${file.path}  [${type}`;
+      const label = getFileLabelFromName(file.name || file.path);
+      output += `${file.name}  ←  ${file.path}  [Type: ${type} | Label: ${label}`;
       if (includeMetadata) {
-        output += `, ${file.size_formatted}`;
-        if (file.modified) {
-          output += `, modified: ${file.modified}`;
-        }
+        const bits = [];
+        if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
+        if (file.modified) bits.push(`Modified: ${file.modified}`);
+        if (file.created) bits.push(`Created: ${file.created}`);
+        if (bits.length) output += ` | ${bits.join(' | ')}`;
       }
       output += ']\n';
     });
@@ -84,19 +88,18 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
 export const exportAsCSV = (files, options = {}) => {
   const { includeMetadata = true } = options;
 
-  let csv = 'Name,Path,Type';
-  
+  let csv = 'Name,Path,SearchType,FileType';
   if (includeMetadata) {
-    csv += ',Size,Size (Formatted),Modified,Created';
+    csv += ',Size,Size (Formatted),Modified,Created,Path';
   }
-  
   csv += '\n';
 
   files.forEach(file => {
     const row = [
       escapeCSV(file.name),
       escapeCSV(file.path),
-      escapeCSV(file.semantic_type || 'Unclassified')
+      escapeCSV(file.semantic_type || 'Unclassified'),
+      escapeCSV(getFileLabelFromName(file.name || file.path)),
     ];
 
     if (includeMetadata) {
@@ -130,7 +133,8 @@ export const exportAsJSON = (files, duplicates = {}, options = {}) => {
     files: includeMetadata ? files : files.map(f => ({
       name: f.name,
       path: f.path,
-      type: f.semantic_type || 'Unclassified'
+      type: f.semantic_type || 'Unclassified',
+      label: getFileLabelFromName(f.name || f.path)
     })),
     duplicates: Object.keys(duplicates).length > 0 ? duplicates : undefined
   };
@@ -153,56 +157,56 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
   } = options;
 
   let md = '# 🔎 Preview Results\n\n';
-  
   if (useTimestamp) {
     md += `*Generated: ${new Date().toLocaleString()}*\n\n`;
   }
-
   md += `**Total Files:** ${files.length}\n\n`;
   md += '---\n\n';
 
   if (groupByType) {
     // Group files by semantic type
     const grouped = groupFilesByType(files);
-    
     Object.entries(grouped).forEach(([type, typeFiles]) => {
       md += `## ${type} (${typeFiles.length} files)\n\n`;
-      
       typeFiles.forEach(file => {
-        md += `- \`${file.name}\``;
+        const label = getFileLabelFromName(file.name || file.path);
+        md += `- \`${file.name}\` ← \`${file.path}\` [Type: ${type} | Label: ${label}`;
         if (includeMetadata) {
-          md += `  \n  📁 \`${file.path}\``;
-          md += `  \n  📏 ${file.size_formatted}`;
-          if (file.modified) {
-            md += `  \n  📅 Modified: ${file.modified}`;
-          }
+          const bits = [];
+          if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
+          if (file.modified) bits.push(`Modified: ${file.modified}`);
+          if (file.created) bits.push(`Created: ${file.created}`);
+          if (bits.length) md += ` | ${bits.join(' | ')}`;
+          if (file.path) md += ` | Path: ${file.path}`;
         }
-        md += '\n\n';
+        md += ']\n';
       });
+      md += '\n';
     });
   } else {
-    // Flat list
     md += '## Files\n\n';
     files.forEach(file => {
       const type = file.semantic_type || 'Unclassified';
-      md += `- \`${file.name}\` ← \`${file.path}\` [${type}`;
+      const label = getFileLabelFromName(file.name || file.path);
+      md += `- \`${file.name}\` ← \`${file.path}\` [Type: ${type} | Label: ${label}`;
       if (includeMetadata) {
-        md += `, ${file.size_formatted}`;
-        if (file.modified) {
-          md += `, modified: ${file.modified}`;
-        }
+        const bits = [];
+        if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
+        if (file.modified) bits.push(`Modified: ${file.modified}`);
+        if (file.created) bits.push(`Created: ${file.created}`);
+        if (bits.length) md += ` | ${bits.join(' | ')}`;
+        if (file.path) md += ` | Path: ${file.path}`;
       }
       md += ']\n';
     });
   }
 
-  // Add duplicates section
   if (Object.keys(duplicates).length > 0) {
     md += '\n---\n\n';
     md += '## ⚠️ Duplicate Files\n\n';
     Object.entries(duplicates).forEach(([name, paths]) => {
       md += `### ${name} (${paths.length} copies)\n\n`;
-      paths.forEach(path => md += `- \`${path}\`\n`);
+      paths.forEach(p => (md += `- \`${p}\`\n`));
       md += '\n';
     });
   }
@@ -228,265 +232,124 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
   let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 20px;
-      background: #f5f5f5;
-      color: #333;
-    }
-    .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 10px;
-      margin-bottom: 30px;
-    }
-    h1 { margin: 0 0 10px 0; }
-    .meta { opacity: 0.9; font-size: 14px; }
-    .section {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    h2 {
-      color: #667eea;
-      border-bottom: 2px solid #667eea;
-      padding-bottom: 10px;
-      margin-top: 0;
-    }
-    .file-item {
-      padding: 10px;
-      border-left: 3px solid #667eea;
-      margin: 10px 0;
-      background: #f9f9f9;
-    }
-    .file-name {
-      font-weight: bold;
-      color: #333;
-      font-family: 'Courier New', monospace;
-    }
-    .file-path {
-      color: #666;
-      font-size: 13px;
-      margin: 5px 0;
-    }
-    .file-meta {
-      color: #999;
-      font-size: 12px;
-    }
-    .type-badge {
-      display: inline-block;
-      padding: 3px 8px;
-      background: #667eea;
-      color: white;
-      border-radius: 3px;
-      font-size: 11px;
-      margin-right: 5px;
-    }
-    .duplicate {
-      background: #fff3cd;
-      border-left-color: #ffc107;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      padding: 12px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background: #667eea;
-      color: white;
-      font-weight: 600;
-    }
-    tr:hover {
-      background: #f5f5f5;
-    }
-    @media print {
-      body { background: white; }
-      .section { box-shadow: none; border: 1px solid #ddd; }
-    }
-  </style>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escapeHTML(title)}</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f5f5f5; color: #333; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }
+  h1 { margin: 0 0 10px 0; }
+  .meta { opacity: 0.9; font-size: 14px; }
+  .section { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  h2 { color: #667eea; border-bottom: 2px solid #667eea; padding-bottom: 10px; margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+  th { background: #667eea; color: white; font-weight: 600; }
+  tr:hover { background: #f5f5f5; }
+  @media print { body { background: white; } .section { box-shadow: none; border: 1px solid #ddd; } }
+</style>
 </head>
 <body>
-  <div class="header">
-    <h1>🔎 ${title}</h1>
-    <div class="meta">
-      <strong>Total Files:</strong> ${files.length}`;
-  
-  if (useTimestamp) {
-    html += ` | <strong>Generated:</strong> ${new Date().toLocaleString()}`;
-  }
-  
-  html += `
-    </div>
-  </div>`;
+<div class="header">
+  <h1>🔎 ${escapeHTML(title)}</h1>
+  <div class="meta"><strong>Total Files:</strong> ${files.length}${useTimestamp ? ` | <strong>Generated:</strong> ${escapeHTML(new Date().toLocaleString())}` : ""}</div>
+</div>
+`;
+
+  const renderTable = (list) => {
+    let t = `
+<div class="section">
+  <h2>Files</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Type</th>
+        <th>Label</th>
+        ${includeMetadata ? `<th>Size</th><th>Modified</th><th>Created</th><th>Path</th>` : ``}
+      </tr>
+    </thead>
+    <tbody>
+`;
+    list.forEach(file => {
+      const type = file.semantic_type || 'Unclassified';
+      const label = getFileLabelFromName(file.name || file.path);
+      t += `
+      <tr>
+        <td>${escapeHTML(file.name)}</td>
+        <td>${escapeHTML(type)}</td>
+        <td>${escapeHTML(label)}</td>
+        ${includeMetadata ? `
+          <td>${escapeHTML(file.size_formatted || '')}</td>
+          <td>${escapeHTML(file.modified || '')}</td>
+          <td>${escapeHTML(file.created || '')}</td>
+          <td>${escapeHTML(file.path || '')}</td>
+        ` : ``}
+      </tr>
+`;
+    });
+    t += `
+    </tbody>
+  </table>
+</div>
+`;
+    return t;
+  };
 
   if (groupByType) {
     const grouped = groupFilesByType(files);
-    
     Object.entries(grouped).forEach(([type, typeFiles]) => {
-      html += `
-  <div class="section">
-    <h2>${type} <span style="font-weight: normal; font-size: 14px;">(${typeFiles.length} files)</span></h2>`;
-      
-      typeFiles.forEach(file => {
-        html += `
-    <div class="file-item">
-      <div class="file-name">${escapeHTML(file.name)}</div>`;
-        if (includeMetadata) {
-          html += `
-      <div class="file-path">📁 ${escapeHTML(file.path)}</div>
-      <div class="file-meta">
-        📏 ${file.size_formatted}`;
-          if (file.modified) {
-            html += ` | 📅 Modified: ${file.modified}`;
-          }
-          html += `
-      </div>`;
-        }
-        html += `
-    </div>`;
-      });
-      
-      html += `
-  </div>`;
+      html += `<div class="section"><h2>${escapeHTML(type)} (${typeFiles.length})</h2>${renderTable(typeFiles)}</div>`;
     });
   } else {
-    html += `
-  <div class="section">
-    <h2>Files</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>`;
-    if (includeMetadata) {
-      html += `
-          <th>Size</th>
-          <th>Modified</th>`;
-    }
-    html += `
-        </tr>
-      </thead>
-      <tbody>`;
-    
-    files.forEach(file => {
-      html += `
-        <tr>
-          <td><code>${escapeHTML(file.name)}</code></td>
-          <td><span class="type-badge">${escapeHTML(file.semantic_type || 'Unclassified')}</span></td>`;
-      if (includeMetadata) {
-        html += `
-          <td>${file.size_formatted}</td>
-          <td>${file.modified || 'N/A'}</td>`;
-      }
-      html += `
-        </tr>`;
-    });
-    
-    html += `
-      </tbody>
-    </table>
-  </div>`;
+    html += renderTable(files);
   }
 
-  // Duplicates section
   if (Object.keys(duplicates).length > 0) {
     html += `
-  <div class="section">
-    <h2>⚠️ Duplicate Files</h2>`;
-    
+<div class="section">
+  <h2>⚠️ Duplicate Files</h2>
+`;
     Object.entries(duplicates).forEach(([name, paths]) => {
-      html += `
-    <div class="file-item duplicate">
-      <div class="file-name">${escapeHTML(name)} <span style="color: #856404;">(${paths.length} copies)</span></div>`;
-      paths.forEach(path => {
-        html += `
-      <div class="file-path">→ ${escapeHTML(path)}</div>`;
-      });
-      html += `
-    </div>`;
+      html += `<h3>${escapeHTML(name)} (${paths.length} copies)</h3><ul>`;
+      paths.forEach(p => (html += `<li>${escapeHTML(p)}</li>`));
+      html += `</ul>`;
     });
-    
-    html += `
-  </div>`;
+    html += `</div>`;
   }
 
   html += `
 </body>
 </html>`;
-
   return html;
 };
 
-/**
- * Trigger file download in browser
- * @param {string} content - File content
- * @param {string} filename - Filename with extension
- * @param {string} mimeType - MIME type
- */
-export const downloadFile = (content, filename, mimeType) => {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
-/**
- * Export files with specified format
- * @param {Array} files - Array of file objects
- * @param {Object} duplicates - Duplicate files object
- * @param {string} format - Export format ('txt', 'csv', 'json', 'md', 'html')
- * @param {Object} options - Export options
- */
 export const exportPreview = (files, duplicates = {}, format = 'txt', options = {}) => {
   let content = '';
   let filename = `file-filter-results-${Date.now()}`;
   let mimeType = 'text/plain';
 
-  switch (format.toLowerCase()) {
+  switch (String(format || '').toLowerCase()) {
     case 'csv':
       content = exportAsCSV(files, options);
       filename += '.csv';
       mimeType = 'text/csv';
       break;
-    
     case 'json':
       content = exportAsJSON(files, duplicates, options);
       filename += '.json';
       mimeType = 'application/json';
       break;
-    
     case 'md':
     case 'markdown':
       content = exportAsMarkdown(files, duplicates, options);
       filename += '.md';
       mimeType = 'text/markdown';
       break;
-    
     case 'html':
       content = exportAsHTML(files, duplicates, options);
       filename += '.html';
       mimeType = 'text/html';
       break;
-    
     case 'txt':
     case 'text':
     default:
@@ -530,4 +393,22 @@ const escapeHTML = (str) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+};
+
+// Add missing download helper (renderer-safe)
+const downloadFile = (content, filename, mimeType = 'text/plain') => {
+  try {
+    const blob = new Blob([content], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    // Ensure it works in Electron renderer
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('downloadFile failed:', err);
+  }
 };
