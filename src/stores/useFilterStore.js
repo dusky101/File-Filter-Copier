@@ -24,13 +24,13 @@ const useFilterStore = create(
       // Size filter
       sizeFilter: 'all', // 'all', 'small', 'medium', 'large', 'huge'
       
-      // Time filter (for future implementation)
+      // Time filter
       timeFilter: "none",
       
       // File type selection (semantic types)
       selectedFileTypes: new Set(),
       
-      // Folder exclusions
+      // Folder exclusions (default persistent exclusions)
       excludedFolders: new Set([
         'node_modules',
         'venv',
@@ -42,6 +42,9 @@ const useFilterStore = create(
         '.vscode'
       ]),
       
+      // Custom folder exclusions (temporary, session-only)
+      customExcludedFolders: new Set(),
+      
       // Deep scan options
       deepScan: false,
       deepScanTerms: [''],
@@ -52,6 +55,7 @@ const useFilterStore = create(
       showFileTypeSelector: false,
       showFolderExclusions: false,
       showDeepScan: false,
+      showCustomFolderModal: false,
       
       // Actions: Source and Destination
       setSourceFolder: (folder) => set({ sourceFolder: folder }),
@@ -70,8 +74,8 @@ const useFilterStore = create(
       setSizeFilter: (size) => set({ sizeFilter: size }),
       
       // Actions: Time Filter
-      setTimeFilter: (val) => set({ timeFilter: val }),  
-          
+      setTimeFilter: (val) => set({ timeFilter: val }),
+      
       // Actions: File Types
       addFileType: (type) =>
         set((state) => ({
@@ -100,7 +104,7 @@ const useFilterStore = create(
       
       setFileTypes: (types) => set({ selectedFileTypes: new Set(types) }),
       
-      // Actions: Folder Exclusions
+      // Actions: Default Folder Exclusions (persistent)
       addExcludedFolder: (folder) =>
         set((state) => ({
           excludedFolders: new Set([...state.excludedFolders, folder])
@@ -125,6 +129,34 @@ const useFilterStore = create(
         }),
       
       setExcludedFolders: (folders) => set({ excludedFolders: new Set(folders) }),
+      
+      // Actions: Custom Folder Exclusions (temporary, session-only)
+      addCustomExcludedFolder: (folder) =>
+        set((state) => ({
+          customExcludedFolders: new Set([...state.customExcludedFolders, folder])
+        })),
+      
+      removeCustomExcludedFolder: (folder) =>
+        set((state) => {
+          const newFolders = new Set(state.customExcludedFolders);
+          newFolders.delete(folder);
+          return { customExcludedFolders: newFolders };
+        }),
+      
+      toggleCustomExcludedFolder: (folder) =>
+        set((state) => {
+          const newFolders = new Set(state.customExcludedFolders);
+          if (newFolders.has(folder)) {
+            newFolders.delete(folder);
+          } else {
+            newFolders.add(folder);
+          }
+          return { customExcludedFolders: newFolders };
+        }),
+      
+      setCustomExcludedFolders: (folders) => set({ customExcludedFolders: new Set(folders) }),
+      
+      clearCustomExcludedFolders: () => set({ customExcludedFolders: new Set() }),
       
       // Actions: Deep Scan
       setDeepScan: (value) => set({ deepScan: value }),
@@ -167,9 +199,20 @@ const useFilterStore = create(
       
       setShowDeepScan: (value) => set({ showDeepScan: value }),
       
+      toggleCustomFolderModal: () =>
+        set((state) => ({ showCustomFolderModal: !state.showCustomFolderModal })),
+      
+      setShowCustomFolderModal: (value) => set({ showCustomFolderModal: value }),
+      
       // Utility: Get filter configuration for API
       getFilterConfig: () => {
         const state = get();
+        // Combine both default and custom excluded folders
+        const allExcludedFolders = new Set([
+          ...state.excludedFolders,
+          ...state.customExcludedFolders
+        ]);
+        
         return {
           folder: state.sourceFolder,
           size_filter: state.sizeFilter,
@@ -186,7 +229,7 @@ const useFilterStore = create(
             .split(',')
             .map(e => e.trim())
             .filter(Boolean),
-          excluded_folders: Array.from(state.excludedFolders)
+          excluded_folders: Array.from(allExcludedFolders)
         };
       },
       
@@ -196,10 +239,10 @@ const useFilterStore = create(
           includeExtensions: '',
           excludeExtensions: '',
           sizeFilter: 'all',
-          timeFilter: 'all',
+          timeFilter: 'none',
           selectedFileTypes: new Set(),
           deepScan: false,
-          deepScanTerms: [],
+          deepScanTerms: [''],
           deepScanMode: 'any',
           excludedFolders: new Set([
             'node_modules',
@@ -210,7 +253,8 @@ const useFilterStore = create(
             'dist',
             'build',
             '.vscode'
-          ])
+          ]),
+          customExcludedFolders: new Set()
         }),
       
       // Utility: Load preset configuration
@@ -219,18 +263,19 @@ const useFilterStore = create(
           includeExtensions: config.include_exts?.join(', ') || '',
           excludeExtensions: config.exclude_exts?.join(', ') || '',
           sizeFilter: config.size_filter || 'all',
-          timeFilter: config.time_filter || 'all',
+          timeFilter: config.time_filter || 'none',
           selectedFileTypes: new Set(config.selected_types || []),
           deepScan: config.deep_scan || false,
-          deepScanTerms: config.deep_scan_terms || [],
-          deepScanMode: config.deep_scan_mode || 'any',
-          excludedFolders: new Set(config.excluded_folders || [])
+          deepScanTerms: config.deep_scan_terms || [''],
+          deepScanMode: config.deep_scan_mode?.toLowerCase() || 'any',
+          excludedFolders: new Set(config.excluded_folders || []),
+          customExcludedFolders: new Set()
         })
     }),
     {
       name: 'file-filter-store',
       partialize: (state) => ({
-        // Only persist these values, not UI state
+        // Only persist these values, not UI state or custom exclusions
         includeExtensions: state.includeExtensions,
         excludeExtensions: state.excludeExtensions,
         sizeFilter: state.sizeFilter,
@@ -245,6 +290,10 @@ const useFilterStore = create(
         }
         if (state && state.selectedFileTypes && Array.isArray(state.selectedFileTypes)) {
           state.selectedFileTypes = new Set(state.selectedFileTypes);
+        }
+        // Ensure custom exclusions start empty
+        if (state) {
+          state.customExcludedFolders = new Set();
         }
       }
     }

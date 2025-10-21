@@ -7,6 +7,7 @@ import os
 import sys
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from pathlib import Path
 
 # Import core functionality
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -208,6 +209,64 @@ async def scan_files(request: ScanRequest, http_req: Request):
             duplicates={},
             error=str(e)
         )
+
+@router.get("/folders")
+async def list_folders(path: str):
+    """
+    List all subdirectories in the given path (non-recursive, one level only).
+    
+    Args:
+        path: Source folder path to scan for subdirectories
+        
+    Returns:
+        List of folder names (not full paths, just names)
+        
+    Example:
+        GET /api/folders?path=/Users/marc/Documents
+        Returns: {
+            "success": true,
+            "path": "/Users/marc/Documents",
+            "folders": ["Projects", "Images", "Archive", ...],
+            "count": 15
+        }
+    """
+    try:
+        # Validate path exists
+        source_path = Path(path)
+        if not source_path.exists():
+            raise HTTPException(status_code=404, detail=f"Path not found: {path}")
+        
+        if not source_path.is_dir():
+            raise HTTPException(status_code=400, detail=f"Path is not a directory: {path}")
+        
+        # Get all subdirectories (one level only)
+        folders = []
+        try:
+            for item in source_path.iterdir():
+                if item.is_dir():
+                    # Only add the folder name, not the full path
+                    folder_name = item.name
+                    # Skip hidden folders (starting with .)
+                    if not folder_name.startswith('.'):
+                        folders.append(folder_name)
+        except PermissionError:
+            raise HTTPException(status_code=403, detail=f"Permission denied: {path}")
+        
+        # Sort alphabetically for better UX
+        folders.sort()
+        
+        return {
+            "success": True,
+            "path": str(source_path),
+            "folders": folders,
+            "count": len(folders)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list folders: {str(e)}")
+
 
 
 @router.post("/copy", response_model=CopyResponse)

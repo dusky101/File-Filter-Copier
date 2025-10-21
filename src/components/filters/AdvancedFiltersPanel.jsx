@@ -21,10 +21,16 @@ import {
   Search,
   Plus,
   AlertTriangle,
+  FolderX,
+  FolderOpen,
+  Trash2,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
 import { fileTypeGroups } from "../../utils/fileTypes";
+import { listFolders } from "../../services/api";
 
 const AdvancedFiltersPanel = () => {
   const {
@@ -56,10 +62,23 @@ const AdvancedFiltersPanel = () => {
     addDeepScanTerm,
     removeDeepScanTerm,
     setDeepScanMode,
+    customExcludedFolders,
+    toggleCustomExcludedFolder,
+    clearCustomExcludedFolders,
+    showCustomFolderModal,
+    setShowCustomFolderModal,
+    sourceFolder,
   } = useFilterStore();
 
   const { animationsEnabled } = useSettingsStore();
 
+  // Local state for custom folder browser
+  const [availableFolders, setAvailableFolders] = useState([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [folderError, setFolderError] = useState("");
+  const [folderSearchTerm, setFolderSearchTerm] = useState("");
+
+  // Time filter options
   const timeOptions = [
     { value: "none", label: "None", description: "No time filtering" },
     {
@@ -140,6 +159,66 @@ const AdvancedFiltersPanel = () => {
     "bin",
     "obj",
   ];
+
+  /**
+   * Load available folders from source directory
+   */
+  const loadAvailableFolders = async () => {
+    if (!sourceFolder) {
+      setFolderError("Please select a source folder first");
+      return;
+    }
+
+    setLoadingFolders(true);
+    setFolderError("");
+
+    try {
+      const result = await listFolders(sourceFolder);
+
+      if (result.success && result.data.folders) {
+        setAvailableFolders(result.data.folders);
+        setShowCustomFolderModal(true);
+      } else {
+        setFolderError(result.error || "Failed to load folders");
+      }
+    } catch (error) {
+      setFolderError("Failed to load folders from source directory");
+      console.error("Folder loading error:", error);
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
+
+  /**
+   * Filter available folders based on search term
+   */
+  const filteredAvailableFolders = availableFolders.filter((folder) =>
+    folder.toLowerCase().includes(folderSearchTerm.toLowerCase())
+  );
+
+  /**
+   * Handle custom time input submission
+   */
+  const handleCustomTimeSubmit = () => {
+    const val = customTimeInput.trim();
+    if (!val) {
+      setCustomError("Please enter a value");
+      return;
+    }
+
+    const pattern = /^([<>])(\d+)([hd])$/;
+    const match = val.match(pattern);
+
+    if (!match) {
+      setCustomError(
+        "Invalid format. Examples: <10h (less than 10 hours), >5d (more than 5 days), <10d"
+      );
+      return;
+    }
+
+    setTimeFilter(val);
+    setCustomError("");
+  };
 
   return (
     <>
@@ -234,46 +313,36 @@ const AdvancedFiltersPanel = () => {
                   }}
                   title={opt.description}
                   className={`
-                    px-3 py-2 rounded-xl font-medium text-sm transition-all text-left
+                    px-3 py-2 rounded-xl font-medium text-sm transition-all text-center
                     ${
                       timeFilter === opt.value
-                        ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg scale-105"
-                        : "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md"
+                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                     }
-                    `}
+                  `}
                 >
-                  <div className="truncate">{opt.label}</div>
+                  {opt.label}
                 </button>
               ))}
             </div>
 
-            {/* Custom input */}
+            {/* Custom Time Input */}
             <div className="flex gap-2 items-start">
-              <input
-                type="text"
-                placeholder="Custom (e.g. <10d or >2h)"
-                value={customTimeInput}
-                onChange={(e) => {
-                  setCustomTimeInput(e.target.value);
-                  setCustomError("");
-                }}
-                className="flex-1 px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              />
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={customTimeInput}
+                  onChange={(e) => {
+                    setCustomTimeInput(e.target.value);
+                    setCustomError("");
+                  }}
+                  placeholder="e.g., <10d, >5h"
+                  className="w-full px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all text-sm"
+                />
+              </div>
               <button
-                onClick={() => {
-                  const val = String(customTimeInput || "").trim();
-                  // Accept form like <10d, >2h  -> regex ^[<>]\d+(h|d)$
-                  const valid = /^[<>]\d+(h|d)$/.test(val);
-                  if (!valid) {
-                    setCustomError(
-                      "Invalid format — use < or > then number, then h or d (e.g. <10d)"
-                    );
-                    return;
-                  }
-                  setTimeFilter(val);
-                  setCustomError("");
-                }}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium shadow-sm hover:shadow-md transition-all"
+                onClick={handleCustomTimeSubmit}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white font-medium shadow-sm hover:shadow-md transition-all text-sm"
               >
                 Set
               </button>
@@ -283,7 +352,7 @@ const AdvancedFiltersPanel = () => {
                   setCustomError("");
                   setTimeFilter("none");
                 }}
-                className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all"
+                className="px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-sm"
                 title="Reset to none"
               >
                 Clear
@@ -314,22 +383,25 @@ const AdvancedFiltersPanel = () => {
                   key={option.value}
                   onClick={() => setSizeFilter(option.value)}
                   className={`
-                    px-4 py-3 rounded-xl font-medium transition-all
+                    px-4 py-3 rounded-xl font-medium transition-all text-center
                     ${
                       sizeFilter === option.value
-                        ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg scale-105"
-                        : "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        ? "bg-gradient-to-r from-green-600 to-teal-600 text-white shadow-md"
+                        : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
                     }
                   `}
                   title={option.description}
                 >
-                  {option.label}
+                  <div className="text-sm font-semibold">{option.label}</div>
+                  <div className="text-xs opacity-75 mt-1">
+                    {option.description}
+                  </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* File Types Button */}
+          {/* File Type Selector Button */}
           <button
             onClick={toggleFileTypeSelector}
             className={`
@@ -344,7 +416,7 @@ const AdvancedFiltersPanel = () => {
             <div className="flex items-center gap-3">
               <Database className="w-5 h-5 text-blue-600 dark:text-blue-400" />
               <div className="text-left">
-                <span className="font-semibold block">Select File Types</span>
+                <span className="font-semibold block">File Types</span>
                 <span className="text-sm text-slate-600 dark:text-slate-400">
                   {selectedFileTypes.size} type
                   {selectedFileTypes.size !== 1 ? "s" : ""} selected
@@ -420,7 +492,6 @@ const AdvancedFiltersPanel = () => {
           {/* Deep Scan Button */}
           <button
             onClick={() => {
-              // Show warning before enabling deep scan
               if (!deepScan && !showDeepScan) {
                 const proceed = window.confirm(
                   "⚠️ Deep Scan Warning\n\n" +
@@ -472,26 +543,19 @@ const AdvancedFiltersPanel = () => {
                 ${animationsEnabled ? "animate-in slide-in-from-top duration-200" : ""}
               `}
             >
-              {/* Enable Deep Scan Toggle */}
-              <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
-                    Performance Warning
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-300">
-                    Deep scan reads file contents and may take considerable time
-                    for large files or many files
-                  </p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
+              {/* Enable/Disable Toggle */}
+              <div className="flex items-center justify-between mb-4">
+                <label className="flex items-center gap-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={deepScan}
                     onChange={(e) => setDeepScan(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600"></div>
+                  <div className="relative w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-checked:bg-gradient-to-r peer-checked:from-purple-600 peer-checked:to-blue-600 rounded-full peer transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Enable Deep Scan
+                  </span>
                 </label>
               </div>
 
@@ -602,12 +666,15 @@ const AdvancedFiltersPanel = () => {
             `}
           >
             <div className="flex items-center gap-3">
-              <X className="w-5 h-5 text-red-600 dark:text-red-400" />
+              <FolderX className="w-5 h-5 text-red-600 dark:text-red-400" />
               <div className="text-left">
                 <span className="font-semibold block">Folder Exclusions</span>
                 <span className="text-sm text-slate-600 dark:text-slate-400">
-                  {excludedFolders.size} folder
-                  {excludedFolders.size !== 1 ? "s" : ""} excluded
+                  {excludedFolders.size + customExcludedFolders.size} folder
+                  {excludedFolders.size + customExcludedFolders.size !== 1
+                    ? "s"
+                    : ""}{" "}
+                  excluded
                 </span>
               </div>
             </div>
@@ -627,40 +694,256 @@ const AdvancedFiltersPanel = () => {
                 ${animationsEnabled ? "animate-in slide-in-from-top duration-200" : ""}
               `}
             >
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {defaultExcludedFolders.map((folder) => {
-                  const isSelected = excludedFolders.has(folder);
-                  return (
-                    <button
-                      key={folder}
-                      onClick={() => toggleExcludedFolder(folder)}
-                      className={`
-                        flex items-center justify-between p-3 rounded-lg transition-all
-                        ${
-                          isSelected
-                            ? "bg-red-100 dark:bg-red-900/30 text-red-900 dark:text-red-200 border-2 border-red-300 dark:border-red-700"
-                            : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border-2 border-transparent"
-                        }
-                      `}
-                    >
-                      <span className="font-mono text-sm truncate">
-                        {folder}
-                      </span>
-                      {isSelected && (
-                        <Check className="w-4 h-4 flex-shrink-0 ml-2" />
-                      )}
-                    </button>
-                  );
-                })}
+              {/* Default Exclusions Section */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                  <FolderX className="w-4 h-4" />
+                  Default Exclusions
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {defaultExcludedFolders.map((folder) => {
+                    const isSelected = excludedFolders.has(folder);
+                    return (
+                      <button
+                        key={folder}
+                        onClick={() => toggleExcludedFolder(folder)}
+                        className={`
+                          flex items-center justify-between p-3 rounded-lg transition-all
+                          ${
+                            isSelected
+                              ? "bg-red-100 dark:bg-red-900/30 text-red-900 dark:text-red-200 border-2 border-red-300 dark:border-red-700"
+                              : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border-2 border-transparent"
+                          }
+                        `}
+                      >
+                        <span className="font-mono text-sm truncate">
+                          {folder}
+                        </span>
+                        {isSelected && (
+                          <Check className="w-4 h-4 flex-shrink-0 ml-2" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+
+              {/* Custom Exclusions Section */}
+              <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4" />
+                    Custom Exclusions
+                    <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                      (temporary, session-only)
+                    </span>
+                  </h3>
+                  {customExcludedFolders.size > 0 && (
+                    <button
+                      onClick={clearCustomExcludedFolders}
+                      className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Clear All
+                    </button>
+                  )}
+                </div>
+
+                {/* Browse Button */}
+                <button
+                  onClick={loadAvailableFolders}
+                  disabled={!sourceFolder || loadingFolders}
+                  className={`
+                    w-full mb-3 px-4 py-3 rounded-lg font-medium transition-all
+                    flex items-center justify-center gap-2
+                    ${
+                      !sourceFolder || loadingFolders
+                        ? "bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed"
+                        : "bg-blue-600 text-white hover:bg-blue-700 shadow-md hover:shadow-lg"
+                    }
+                  `}
+                >
+                  {loadingFolders ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading Folders...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4" />
+                      Browse Source Folders
+                    </>
+                  )}
+                </button>
+
+                {!sourceFolder && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-900 dark:text-amber-200">
+                      Please select a source folder first to browse available
+                      folders
+                    </p>
+                  </div>
+                )}
+
+                {folderError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-900 dark:text-red-200">
+                      {folderError}
+                    </p>
+                  </div>
+                )}
+
+                {/* Selected Custom Folders */}
+                {customExcludedFolders.size > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-2">
+                      Selected ({customExcludedFolders.size}):
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                      {Array.from(customExcludedFolders).map((folder) => (
+                        <div
+                          key={folder}
+                          className="flex items-center justify-between p-2 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700"
+                        >
+                          <span className="font-mono text-xs truncate">
+                            {folder}
+                          </span>
+                          <button
+                            onClick={() => toggleCustomExcludedFolder(folder)}
+                            className="ml-2 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-200"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Info Tip */}
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                 <p className="text-xs text-blue-900 dark:text-blue-200">
                   <strong>Tip:</strong> Files inside excluded folders will be
-                  skipped during scanning
+                  skipped during scanning. Custom exclusions are temporary and
+                  won't be saved to your defaults.
                 </p>
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Custom Folder Selection Modal */}
+      {showCustomFolderModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div
+            className={`
+              bg-white dark:bg-slate-800 rounded-2xl shadow-2xl 
+              max-w-2xl w-full max-h-[80vh] flex flex-col
+              ${animationsEnabled ? "animate-in zoom-in-95 duration-200" : ""}
+            `}
+          >
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                    Select Folders to Exclude
+                  </h2>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                    Choose folders from your source directory (temporary
+                    exclusion)
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowCustomFolderModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              {/* Search Input */}
+              <div className="mt-4 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={folderSearchTerm}
+                  onChange={(e) => setFolderSearchTerm(e.target.value)}
+                  placeholder="Search folders..."
+                  className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto flex-1">
+              {filteredAvailableFolders.length === 0 ? (
+                <div className="text-center py-8">
+                  <FolderOpen className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
+                  <p className="text-slate-600 dark:text-slate-400">
+                    {folderSearchTerm
+                      ? "No folders match your search"
+                      : "No folders found in source directory"}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {filteredAvailableFolders.map((folder) => {
+                    const isSelected = customExcludedFolders.has(folder);
+                    return (
+                      <button
+                        key={folder}
+                        onClick={() => toggleCustomExcludedFolder(folder)}
+                        className={`
+                          flex items-center justify-between p-3 rounded-lg transition-all
+                          ${
+                            isSelected
+                              ? "bg-purple-100 dark:bg-purple-900/30 text-purple-900 dark:text-purple-200 border-2 border-purple-300 dark:border-purple-700"
+                              : "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 border-2 border-transparent"
+                          }
+                        `}
+                      >
+                        <span className="font-mono text-sm truncate">
+                          {folder}
+                        </span>
+                        {isSelected && (
+                          <Check className="w-4 h-4 flex-shrink-0 ml-2" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <div className="text-sm text-slate-600 dark:text-slate-400">
+                {customExcludedFolders.size} folder
+                {customExcludedFolders.size !== 1 ? "s" : ""} selected
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    clearCustomExcludedFolders();
+                  }}
+                  className="px-4 py-2 rounded-lg font-medium text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
+                >
+                  Clear Selection
+                </button>
+                <button
+                  onClick={() => setShowCustomFolderModal(false)}
+                  className="px-6 py-2 rounded-lg font-medium text-white bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 shadow-md hover:shadow-lg transition-all"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </>

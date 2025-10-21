@@ -36,7 +36,10 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
           output += `  ←  ${file.path}`;
           output += `  [${file.size_formatted}`;
           if (file.modified) {
-            output += `, modified: ${file.modified}`;
+            output += `, Modified: ${file.modified}`;
+          }
+          if (file.created) {
+            output += `, Created: ${file.created}`;
           }
           output += ']';
         }
@@ -88,9 +91,11 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
 export const exportAsCSV = (files, options = {}) => {
   const { includeMetadata = true } = options;
 
+  // Base columns
   let csv = 'Name,Path,SearchType,FileType';
+  // Optional metadata columns (do not duplicate Path)
   if (includeMetadata) {
-    csv += ',Size,Size (Formatted),Modified,Created,Path';
+    csv += ',Size,Size (Formatted),Modified,Created';
   }
   csv += '\n';
 

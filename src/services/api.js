@@ -42,6 +42,34 @@ apiClient.interceptors.response.use(
 );
 
 // ============================================================
+// Folder Operations API
+// ============================================================
+
+/**
+ * List all subdirectories in a given folder path
+ * 
+ * @param {string} folderPath - Path to the source folder
+ * @returns {Promise<Object>} Result with folder list
+ */
+export const listFolders = async (folderPath) => {
+  try {
+    const response = await apiClient.get('/folders', {
+      params: { path: folderPath }
+    });
+
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || 'Failed to list folders',
+    };
+  }
+};
+
+// ============================================================
 // File Scanning API
 // ============================================================
 
@@ -151,15 +179,8 @@ export const copyFiles = async (copyRequest) => {
  */
 export const savePreset = async (name, config) => {
   try {
-    const response = await apiClient.post('/presets/save', {
-      name,
-      config,
-    });
-
-    return {
-      success: true,
-      data: response.data,
-    };
+    const response = await apiClient.post('/presets/save', { name, config });
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
@@ -169,19 +190,15 @@ export const savePreset = async (name, config) => {
 };
 
 /**
- * Load a saved preset by name
+ * Load a preset by name
  * 
- * @param {string} name - Preset name to load
+ * @param {string} name - Preset name
  * @returns {Promise<Object>} Preset configuration
  */
 export const loadPreset = async (name) => {
   try {
     const response = await apiClient.get(`/presets/${name}`);
-
-    return {
-      success: true,
-      data: response.data,
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
@@ -191,18 +208,14 @@ export const loadPreset = async (name) => {
 };
 
 /**
- * Get list of all saved presets
+ * List all available presets
  * 
  * @returns {Promise<Object>} List of preset names
  */
 export const listPresets = async () => {
   try {
     const response = await apiClient.get('/presets/list');
-
-    return {
-      success: true,
-      data: response.data,
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
@@ -212,7 +225,7 @@ export const listPresets = async () => {
 };
 
 /**
- * Delete a saved preset
+ * Delete a preset by name
  * 
  * @param {string} name - Preset name to delete
  * @returns {Promise<Object>} Delete operation result
@@ -220,11 +233,7 @@ export const listPresets = async () => {
 export const deletePreset = async (name) => {
   try {
     const response = await apiClient.delete(`/presets/${name}`);
-
-    return {
-      success: true,
-      data: response.data,
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
@@ -238,22 +247,18 @@ export const deletePreset = async (name) => {
 // ============================================================
 
 /**
- * Check if the backend API is healthy and responding
+ * Check if the backend is running and healthy
  * 
- * @returns {Promise<Object>} Health status
+ * @returns {Promise<Object>} Health check result
  */
 export const healthCheck = async () => {
   try {
     const response = await apiClient.get('/health');
-
-    return {
-      success: true,
-      data: response.data,
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
-      error: error.message || 'Backend is not responding',
+      error: error.response?.data?.detail || error.message || 'Health check failed',
     };
   }
 };
@@ -263,27 +268,23 @@ export const healthCheck = async () => {
 // ============================================================
 
 /**
- * Parse comma-separated extensions into array
+ * Parse comma-separated extensions into an array
  * 
- * @param {string} extensionsString - Comma-separated extensions (e.g., ".py, .js, .txt")
- * @returns {Array<string>|null} Array of normalised extensions or null
+ * @param {string} extensionString - Comma-separated extensions
+ * @returns {Array<string>|null} Array of extensions or null if empty
  */
-export const parseExtensions = (extensionsString) => {
-  if (!extensionsString || !extensionsString.trim()) {
-    return null;
-  }
-
-  return extensionsString
+export const parseExtensions = (extensionString) => {
+  if (!extensionString || !extensionString.trim()) return null;
+  
+  return extensionString
     .split(',')
-    .map((ext) => {
-      const trimmed = ext.trim().toLowerCase();
-      return trimmed.startsWith('.') ? trimmed : `.${trimmed}`;
-    })
-    .filter((ext) => ext.length > 1); // Remove empty extensions
+    .map(ext => ext.trim())
+    .filter(ext => ext.length > 0)
+    .map(ext => ext.startsWith('.') ? ext : `.${ext}`);
 };
 
 /**
- * Format file size from bytes to human-readable string
+ * Format file size in human-readable format
  * 
  * @param {number} bytes - File size in bytes
  * @returns {string} Formatted size (e.g., "1.5 MB")
@@ -295,26 +296,23 @@ export const formatFileSize = (bytes) => {
   const k = 1024;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${units[i]}`;
 };
 
 /**
- * Format timestamp to British English date/time
+ * Format timestamp in human-readable format
  * 
- * @param {string} timestamp - ISO timestamp string
- * @returns {string} Formatted date/time
+ * @param {number} timestamp - Unix timestamp
+ * @returns {string} Formatted date and time
  */
 export const formatTimestamp = (timestamp) => {
-  if (!timestamp) return 'N/A';
-  
-  const date = new Date(timestamp);
+  const date = new Date(timestamp * 1000);
   return date.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
     year: 'numeric',
+    month: 'short',
+    day: 'numeric',
     hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
+    minute: '2-digit'
   });
 };
 
@@ -331,4 +329,5 @@ export default {
   formatFileSize,
   formatTimestamp,
   startProgress,
+  listFolders,
 };

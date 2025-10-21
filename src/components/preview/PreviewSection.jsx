@@ -1,361 +1,449 @@
-/**
- * Preview Section Component
- * Displays filtered file results with sorting, searching, and pagination
- */
-
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   FileText,
-  Search,
   Download,
-  ChevronLeft,
-  ChevronRight,
-  ArrowUp,
-  ArrowDown,
-  AlertTriangle,
+  Settings2,
+  ChevronUp,
+  ChevronDown,
+  Search,
+  SortAsc,
+  SortDesc,
+  Folder,
+  Calendar,
+  HardDrive,
+  FileType,
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
+import { formatFileSize } from "../../services/api";
 import { exportPreview } from "../../utils/exportUtils";
-import { getFileLabelFromName } from "../../utils/fileTypes";
 
-const PreviewSection = () => {
-  const {
-    filteredFiles,
-    duplicates,
-    isLoading,
-    error,
-    sortBy,
-    sortOrder,
-    searchQuery,
-    currentPage,
-    selectedFiles,
-    setSearchQuery,
-    setSortBy,
-    getPaginatedFiles,
-    getPaginationInfo,
-    toggleFileSelection,
-    selectAll,
-    deselectAll,
-  } = usePreviewStore();
-
+/**
+ * PreviewSection Component
+ *
+ * Displays filtered file results in a paginated, sortable table with enhanced export options.
+ * Features inline format selection and metadata toggle with direct link to settings.
+ *
+ * @component
+ */
+const PreviewSection = ({ onOpenSettings }) => {
+  const { filteredFiles, duplicates } = usePreviewStore();
   const { dryRun } = useFilterStore();
   const {
+    animationsEnabled,
+    defaultExportFormat,
+    setDefaultExportFormat,
+    includeMetadataInExport,
+    toggleMetadataInExport,
     showFileSize,
     showModifiedDate,
     showCreatedDate,
     showFileType,
     showFullPath,
-    animationsEnabled,
-    defaultExportFormat,
-    includeMetadataInExport, // add this from settings
+    defaultItemsPerPage,
   } = useSettingsStore();
 
-  const paginatedFiles = getPaginatedFiles();
-  const paginationInfo = getPaginationInfo();
+  // Local state for table controls
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("name");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(defaultItemsPerPage);
 
-  // Don't show if dry run is disabled
+  // Safety check: ensure filteredFiles is an array (must be before early return)
+  const safeFilteredFiles = Array.isArray(filteredFiles) ? filteredFiles : [];
+
+  /**
+   * Filter and sort files based on search and sort criteria
+   */
+  const processedFiles = useMemo(() => {
+    let result = [...safeFilteredFiles];
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (file) =>
+          file.name.toLowerCase().includes(term) ||
+          file.path.toLowerCase().includes(term)
+      );
+    }
+
+    // Apply sorting
+    result.sort((a, b) => {
+      let compareA, compareB;
+
+      switch (sortBy) {
+        case "name":
+          compareA = a.name.toLowerCase();
+          compareB = b.name.toLowerCase();
+          break;
+        case "size":
+          compareA = a.size;
+          compareB = b.size;
+          break;
+        case "modified":
+          compareA = a.modified;
+          compareB = b.modified;
+          break;
+        case "created":
+          compareA = a.created;
+          compareB = b.created;
+          break;
+        case "type":
+          compareA = a.name.split(".").pop().toLowerCase();
+          compareB = b.name.split(".").pop().toLowerCase();
+          break;
+        default:
+          compareA = a.name.toLowerCase();
+          compareB = b.name.toLowerCase();
+      }
+
+      if (compareA < compareB) return sortOrder === "asc" ? -1 : 1;
+      if (compareA > compareB) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return result;
+  }, [safeFilteredFiles, searchTerm, sortBy, sortOrder]);
+
+  // Pagination
+  const totalPages = Math.ceil(processedFiles.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedFiles = processedFiles.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
+
+  // Don't show preview if dry run is disabled (after all hooks)
   if (!dryRun) {
     return null;
   }
 
   /**
-   * Handle export functionality
+   * Handle column header click for sorting
    */
-  const handleExport = () => {
-    try {
-      exportPreview(
-        filteredFiles,
-        duplicates,
-        defaultExportFormat, // 'txt' | 'csv' | 'json' | 'md' | 'html'
-        {
-          includeMetadata: includeMetadataInExport,
-          useTimestamp: true,
-          // groupByType: false, // optional future flag
-        }
-      );
-    } catch (error) {
-      console.error("Export failed:", error);
-      alert("Failed to export preview results.");
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(column);
+      setSortOrder("asc");
     }
   };
 
   /**
-   * Render sort indicator
+   * Export files in the selected format
    */
-  const renderSortIcon = (field) => {
-    if (sortBy !== field) return null;
+  const handleExport = async () => {
+    try {
+      // Use centralized export utility to generate and download the file.
+      // It preserves date strings already present on file objects and avoids re-parsing.
+      exportPreview(processedFiles, duplicates || {}, defaultExportFormat, {
+        includeMetadata: includeMetadataInExport,
+        // Keep timestamp and flat listing consistent with current UI
+        useTimestamp: true,
+        groupByType: false,
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert("Failed to export files. Please try again.");
+    }
+  };
+
+  /**
+   * Render sort icon for column headers
+   */
+  const SortIcon = ({ column }) => {
+    if (sortBy !== column) return null;
     return sortOrder === "asc" ? (
-      <ArrowUp className="w-4 h-4 inline ml-1" />
+      <SortAsc className="w-4 h-4" />
     ) : (
-      <ArrowDown className="w-4 h-4 inline ml-1" />
+      <SortDesc className="w-4 h-4" />
     );
   };
 
+  if (safeFilteredFiles.length === 0) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-12 text-center">
+        <FileText className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+          No Files Found
+        </h3>
+        <p className="text-slate-600 dark:text-slate-400">
+          Adjust your filters or select a source folder to begin scanning.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`
-        bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 mb-6 
-        border border-slate-200 dark:border-slate-700
-        ${animationsEnabled ? "animate-in slide-in-from-top duration-300" : ""}
-      `}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+      {/* Header with enhanced export controls */}
+      <div className="flex items-center justify-between mb-4 p-6 pb-0">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" />
           Preview Results
         </h3>
+
         <div className="flex items-center gap-3">
           <span className="text-sm text-slate-600 dark:text-slate-400">
-            {filteredFiles.length} file{filteredFiles.length !== 1 ? "s" : ""}{" "}
-            found
+            {safeFilteredFiles.length} file
+            {safeFilteredFiles.length !== 1 ? "s" : ""} found
           </span>
-          {filteredFiles.length > 0 && (
-            <button
-              onClick={handleExport}
-              className={`
-                flex items-center gap-2 px-4 py-2 
-                bg-gradient-to-r from-green-600 to-emerald-600 text-white 
-                rounded-lg hover:from-green-700 hover:to-emerald-700 
-                shadow-md hover:shadow-lg text-sm font-medium
-                focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
-                ${animationsEnabled ? "transition-all" : ""}
-              `}
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+
+          {safeFilteredFiles.length > 0 && (
+            <>
+              {/* Metadata status badge - click to open settings */}
+              <button
+                onClick={onOpenSettings}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                  ${
+                    includeMetadataInExport
+                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600"
+                  }
+                  hover:shadow-sm transition-all cursor-pointer
+                `}
+                title="Click to change export settings"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                {includeMetadataInExport ? "Metadata: On" : "Metadata: Off"}
+              </button>
+
+              {/* Format selector */}
+              <select
+                value={defaultExportFormat}
+                onChange={(e) => setDefaultExportFormat(e.target.value)}
+                className={`
+                  px-3 py-2 text-sm font-medium rounded-lg
+                  bg-white dark:bg-slate-800 
+                  border border-slate-300 dark:border-slate-600
+                  text-slate-700 dark:text-slate-300
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                  ${animationsEnabled ? "transition-all" : ""}
+                `}
+              >
+                <option value="txt">Text (.txt)</option>
+                <option value="csv">CSV (.csv)</option>
+                <option value="json">JSON (.json)</option>
+                <option value="md">Markdown (.md)</option>
+                <option value="html">HTML (.html)</option>
+              </select>
+
+              {/* Export button */}
+              <button
+                onClick={handleExport}
+                className={`
+                  flex items-center gap-2 px-4 py-2 
+                  bg-gradient-to-r from-green-600 to-emerald-600 text-white 
+                  rounded-lg hover:from-green-700 hover:to-emerald-700 
+                  shadow-md hover:shadow-lg text-sm font-medium
+                  focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
+                  ${animationsEnabled ? "transition-all" : ""}
+                `}
+              >
+                <Download className="w-4 h-4" />
+                Export as {defaultExportFormat.toUpperCase()}
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {/* Duplicates Warning */}
-      {Object.keys(duplicates).length > 0 && (
-        <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-            <div>
-              <p className="font-semibold text-amber-900 dark:text-amber-200">
-                {Object.keys(duplicates).length} duplicate filename
-                {Object.keys(duplicates).length !== 1 ? "s" : ""} detected
-              </p>
-              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                Files with the same name will be renamed automatically during
-                copy
-              </p>
-            </div>
-          </div>
+      {/* Search and controls */}
+      <div className="px-6 pb-4 flex items-center gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search files..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          />
         </div>
-      )}
 
-      {/* Search Bar */}
-      {filteredFiles.length > 0 && (
-        <div className="mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search files by name, path, or type..."
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-            />
-          </div>
-        </div>
-      )}
+        <select
+          value={itemsPerPage}
+          onChange={(e) => {
+            setItemsPerPage(Number(e.target.value));
+            setCurrentPage(1);
+          }}
+          className="px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+        >
+          <option value={25}>25 per page</option>
+          <option value={50}>50 per page</option>
+          <option value={100}>100 per page</option>
+          <option value={250}>250 per page</option>
+        </select>
+      </div>
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-12 text-center border-2 border-dashed border-slate-300 dark:border-slate-700">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-slate-600 dark:text-slate-400">
-            Loading preview results...
-          </p>
-        </div>
-      )}
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-slate-50 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-700">
+            <tr>
+              <th
+                onClick={() => handleSort("name")}
+                className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <div className="flex items-center gap-2">
+                  Name
+                  <SortIcon column="name" />
+                </div>
+              </th>
 
-      {/* Error State */}
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-6 text-center border border-red-200 dark:border-red-800">
-          <p className="text-red-900 dark:text-red-200 font-semibold">
-            Error loading preview
-          </p>
-          <p className="text-red-700 dark:text-red-300 text-sm mt-2">{error}</p>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!isLoading && !error && filteredFiles.length === 0 && (
-        <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-12 text-center border-2 border-dashed border-slate-300 dark:border-slate-700">
-          <FileText className="w-16 h-16 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
-          <p className="text-slate-600 dark:text-slate-400 text-lg font-medium">
-            No files to preview yet
-          </p>
-          <p className="text-slate-500 dark:text-slate-500 text-sm mt-2">
-            Configure your filters and run a scan to see matching files
-          </p>
-        </div>
-      )}
-
-      {/* Results Table */}
-      {!isLoading && !error && paginatedFiles.length > 0 && (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                <tr>
-                  <th className="px-4 py-3 text-left">
-                    <input
-                      type="checkbox"
-                      checked={
-                        selectedFiles.size === filteredFiles.length &&
-                        filteredFiles.length > 0
-                      }
-                      onChange={(e) =>
-                        e.target.checked ? selectAll() : deselectAll()
-                      }
-                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
-                  </th>
-                  <th
-                    onClick={() => setSortBy("name")}
-                    className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  >
-                    Name {renderSortIcon("name")}
-                  </th>
-                  {showFileSize && (
-                    <th
-                      onClick={() => setSortBy("size")}
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      Size {renderSortIcon("size")}
-                    </th>
-                  )}
-                  {showModifiedDate && (
-                    <th
-                      onClick={() => setSortBy("modified")}
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      Modified {renderSortIcon("modified")}
-                    </th>
-                  )}
-                  {showCreatedDate && (
-                    <th
-                      onClick={() => setSortBy("created")}
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      Created {renderSortIcon("created")}
-                    </th>
-                  )}
-                  {showFileType && (
-                    <th
-                      onClick={() => setSortBy("type")}
-                      className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      Type {renderSortIcon("type")}
-                    </th>
-                  )}
-                  {/* New Label column (non-sortable for now) */}
-                  {showFileType && (
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                      Label
-                    </th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {paginatedFiles.map((file, index) => (
-                  <tr
-                    key={`${file.path}-${index}`}
-                    className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedFiles.has(file.path)}
-                        onChange={() => toggleFileSelection(file.path)}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <div className="font-medium text-slate-900 dark:text-white">
-                          {file.name}
-                        </div>
-                        {showFullPath && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">
-                            {file.path}
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    {showFileSize && (
-                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                        {file.size_formatted}
-                      </td>
-                    )}
-                    {showModifiedDate && (
-                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                        {file.modified}
-                      </td>
-                    )}
-                    {showCreatedDate && (
-                      <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-400">
-                        {file.created}
-                      </td>
-                    )}
-                    {showFileType && (
-                      <td className="px-4 py-3">
-                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
-                          {file.semantic_type}
-                        </span>
-                      </td>
-                    )}
-                    {showFileType && (
-                      <td className="px-4 py-3">
-                        <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200">
-                          {getFileLabelFromName(file.name || file.path)}
-                        </span>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {paginationInfo.totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Showing {paginationInfo.startIndex} to {paginationInfo.endIndex}{" "}
-                of {paginationInfo.totalItems} files
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => usePreviewStore.getState().previousPage()}
-                  disabled={!paginationInfo.hasPreviousPage}
-                  className="p-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              {showFileSize && (
+                <th
+                  onClick={() => handleSort("size")}
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                  Page {paginationInfo.currentPage} of{" "}
-                  {paginationInfo.totalPages}
-                </span>
-                <button
-                  onClick={() => usePreviewStore.getState().nextPage()}
-                  disabled={!paginationInfo.hasNextPage}
-                  className="p-2 rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  <div className="flex items-center gap-2">
+                    Size
+                    <SortIcon column="size" />
+                  </div>
+                </th>
+              )}
+
+              {showModifiedDate && (
+                <th
+                  onClick={() => handleSort("modified")}
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+                  <div className="flex items-center gap-2">
+                    Modified
+                    <SortIcon column="modified" />
+                  </div>
+                </th>
+              )}
+
+              {showCreatedDate && (
+                <th
+                  onClick={() => handleSort("created")}
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <div className="flex items-center gap-2">
+                    Created
+                    <SortIcon column="created" />
+                  </div>
+                </th>
+              )}
+
+              {showFileType && (
+                <th
+                  onClick={() => handleSort("type")}
+                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <div className="flex items-center gap-2">
+                    Semantic Type
+                    <SortIcon column="type" />
+                  </div>
+                </th>
+              )}
+
+              {showFileType && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Extension
+                </th>
+              )}
+
+              {showFullPath && (
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  Path
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+            {paginatedFiles.map((file, index) => (
+              <tr
+                key={index}
+                className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+              >
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
+                  {file.name}
+                </td>
+
+                {showFileSize && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
+                    {formatFileSize(file.size)}
+                  </td>
+                )}
+
+                {showModifiedDate && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
+                    {file.modified}
+                  </td>
+                )}
+
+                {showCreatedDate && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
+                    {file.created}
+                  </td>
+                )}
+
+                {showFileType && (
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
+                      {file.semantic_type || "Unclassified"}
+                    </span>
+                  </td>
+                )}
+
+                {showFileType && (
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 uppercase">
+                    {file.name.split(".").pop()}
+                  </td>
+                )}
+
+                {showFullPath && (
+                  <td className="px-6 py-4 font-mono text-xs text-slate-600 dark:text-slate-400">
+                    {file.path}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <div className="text-sm text-slate-600 dark:text-slate-400">
+            Showing {startIndex + 1} to{" "}
+            {Math.min(startIndex + itemsPerPage, processedFiles.length)} of{" "}
+            {processedFiles.length} results
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 rounded-lg border border-slate-300 dark:border-slate-600 text-sm font-medium text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              Previous
+            </button>
+
+            <span className="text-sm text-slate-600 dark:text-slate-400">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 rounded-lg border border-slate-300 dark:border-slate-600 text-sm font-medium text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

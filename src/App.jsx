@@ -24,7 +24,7 @@ import {
 } from "./services/api";
 import DeepScanProgressModal from "./components/progress/DeepScanProgressModal";
 import PresetNameDialog from "./utils/PresetNameDialog";
-import { Button } from "./ui/button";
+
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -37,6 +37,7 @@ function App() {
     destinationFolder,
     outputFolderName,
     dryRun,
+    toggleDryRun,
     getFilterConfig,
   } = useFilterStore();
 
@@ -97,7 +98,7 @@ function App() {
     const hasTerms =
       Array.isArray(config.deep_scan_terms) &&
       config.deep_scan_terms.some((t) => String(t || "").trim().length > 0);
-    const wantsProgress = !!config.deep_scan && hasTerms;
+    const wantsProgress = !config.deep_scan && hasTerms;
 
     let progressId = null;
     if (wantsProgress) {
@@ -183,7 +184,6 @@ function App() {
       const copyRequest = {
         files: filePaths,
         destination: destinationFolder,
-        // FIX: use outputFolder (what api.js expects)
         outputFolder: outputFolderName,
       };
 
@@ -263,27 +263,34 @@ function App() {
           onClose={() => setShowSettings(false)}
         />
 
-        {/* Main Configuration Section */}
+        {/* Main Configuration Section (Source, Destination, Output - NO dry run) */}
         <MainConfigSection />
-
-        {/* Preview Section (only shown when dry run is enabled) */}
-        <PreviewSection />
 
         {/* Advanced Filters Panel */}
         <AdvancedFiltersPanel />
 
-        {/* Progress Modal */}
-        <DeepScanProgressModal
-          open={progressState.open}
-          progressId={progressState.id}
-          onClose={() => setProgressState({ open: false, id: null })}
-        />
-        {/* Preset Name Dialog */}
-        <PresetNameDialog
-          open={showPresetDialog}
-          onClose={() => setShowPresetDialog(false)}
-          onSave={handleConfirmSavePreset}
-        />
+        {/* Dry Run Toggle - Moved here, just above action buttons */}
+        <div className="mb-6">
+          <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={toggleDryRun}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-gradient-to-r peer-checked:from-blue-600 peer-checked:to-purple-600"></div>
+            </label>
+            <div className="flex-1">
+              <span className="font-semibold text-slate-900 dark:text-white block">
+                Dry Run (Preview Only)
+              </span>
+              <p className="text-xs text-slate-600 dark:text-slate-400">
+                Preview files without copying them
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -296,7 +303,7 @@ function App() {
               rounded-2xl shadow-xl hover:shadow-2xl font-semibold text-lg
               focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
               disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-xl
-              ${animationsEnabled ? "transition-all hover:scale-[1.02]" : ""}
+              ${animationsEnabled ? "transition-all hover:scale-[1.02] active:scale-[0.98]" : ""}
             `}
           >
             {isProcessing ? (
@@ -316,40 +323,35 @@ function App() {
             onClick={handleSavePreset}
             disabled={isProcessing}
             className={`
-              group relative px-6 py-4 flex items-center justify-center gap-2
-              bg-gradient-to-r from-blue-600 to-purple-600 text-white 
-              rounded-2xl shadow-lg hover:shadow-xl font-semibold
+              px-6 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white 
+              rounded-2xl shadow-xl hover:shadow-2xl font-semibold text-lg
               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-              disabled:opacity-50 disabled:cursor-not-allowed
-              ${animationsEnabled ? "transition-all hover:scale-[1.02]" : ""}
+              disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-xl
+              flex items-center justify-center gap-3
+              ${animationsEnabled ? "transition-all hover:scale-[1.02] active:scale-[0.98]" : ""}
             `}
           >
-            <Save className="w-5 h-5 transition-transform group-hover:rotate-6" />
-            <span>Save Preset</span>
+            <Save className="w-6 h-6" />
+            Save Preset
           </button>
         </div>
 
-        {/* Backend Status Indicator */}
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
-          <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2">
-            <span className="flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-            </span>
-            <span>
-              <strong>Backend:</strong> Ensure FastAPI is running on{" "}
-              <code className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono text-xs">
-                http://localhost:8000
-              </code>
-            </span>
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-500 mt-2 pl-4">
-            Run:{" "}
-            <code className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded font-mono">
-              cd backend && source venv/bin/activate && python main.py
-            </code>
-          </p>
-        </div>
+        {/* Preview Section - NOW directly below action buttons! */}
+        <PreviewSection />
+
+        {/* Progress Modal */}
+        <DeepScanProgressModal
+          open={progressState.open}
+          progressId={progressState.id}
+          onClose={() => setProgressState({ open: false, id: null })}
+        />
+
+        {/* Preset Name Dialog */}
+        <PresetNameDialog
+          open={showPresetDialog}
+          onClose={() => setShowPresetDialog(false)}
+          onSave={handleConfirmSavePreset}
+        />
       </div>
     </div>
   );
