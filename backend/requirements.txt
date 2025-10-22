@@ -1,16 +1,12 @@
-# FastAPI framework and server
 fastapi==0.115.0
-uvicorn[standard]==0.31.0
-
-# CORS middleware for Electron communication
-python-multipart==0.0.12
-
-# Type hints and validation
+starlette==0.38.6
+uvicorn==0.31.0
+h11==0.16.0
 pydantic==2.9.2
 pydantic-settings==2.5.2
-
-# File system operations (already in Python, but explicit for clarity)
-pathlib2==2.3.7.post1
-
-# Optional: for better performance
+python-multipart==0.0.12
 orjson==3.10.7
+
+# Performance extras (skip on Windows to avoid build issues)
+uvloop==0.21.0; sys_platform != "win32"
+httptools==0.7.1; sys_platform != "win32"

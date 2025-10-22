@@ -1,15 +1,40 @@
 const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
+const path = require('path');
+
+// Resolve platform-specific icon paths
+const iconsDir = path.resolve(__dirname, 'src', 'assets', 'icons');
+// For Windows and macOS, Electron Packager will append the correct extension when
+// you omit it. For Linux, a PNG path is expected by makers and BrowserWindow.
+const packagerIcon = (() => {
+  if (process.platform === 'darwin') return path.join(iconsDir, 'ffcosx'); // .icns
+  if (process.platform === 'win32') return path.join(iconsDir, 'ffcw'); // .ico
+  return path.join(iconsDir, 'ffcl.png'); // .png for Linux
+})();
 
 module.exports = {
   packagerConfig: {
     asar: true,
+    // For Windows/macOS, omit the extension and Packager will add .ico/.icns
+    // For Linux, providing the .png is fine here, makers will also be set below
+    icon: packagerIcon,
+    // Include the prebuilt backend binaries/resources inside the packaged app
+    // Expectation: you'll build the backend into backend/dist/<platform>/... and/or
+    // a single executable named 'file-filter-backend' placed under backend/dist
+    extraResource: [
+      path.resolve(__dirname, 'backend', 'dist'),
+      // Fallback: allow directly under backend/file-filter-backend*
+      path.resolve(__dirname, 'backend', 'file-filter-backend'),
+    ],
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
-      config: {},
+      config: {
+        // The ICO file to use as the icon for the generated Setup.exe
+        setupIcon: path.join(iconsDir, 'ffcw.ico'),
+      },
     },
     {
       name: '@electron-forge/maker-zip',
@@ -17,11 +42,21 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-deb',
-      config: {},
+      config: {
+        options: {
+          // Path to PNG icon for Linux packages
+          icon: path.join(iconsDir, 'ffcl.png'),
+        },
+      },
     },
     {
       name: '@electron-forge/maker-rpm',
-      config: {},
+      config: {
+        options: {
+          // Path to PNG icon for Linux packages
+          icon: path.join(iconsDir, 'ffcl.png'),
+        },
+      },
     },
   ],
   plugins: [

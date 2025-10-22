@@ -86,17 +86,14 @@ async def root():
 if __name__ == "__main__":
     """
     Run the FastAPI server with Uvicorn
-    
-    Usage:
-        python main.py
-    
-    Or with uvicorn directly:
-        uvicorn main:app --reload --host 0.0.0.0 --port 8000
     """
+    port = int(os.getenv("PORT", "8000"))
+    # Disable reload when frozen/packaged; allow enabling in dev via env
+    reload_flag = os.getenv("FLC_RELOAD", "0") == "1" and not getattr(sys, "frozen", False)
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,  # Auto-reload on code changes (disable in production)
+        port=port,
+        reload=reload_flag,
         log_level="info"
     )
