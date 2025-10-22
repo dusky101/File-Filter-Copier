@@ -4,10 +4,10 @@
  */
 
 import React from "react";
-import { Filter, FolderSearch, Settings } from "lucide-react";
+import { Filter, FolderSearch, Settings, Info } from "lucide-react";
 import useSettingsStore from "../../stores/useSettingsStore";
 
-const Header = ({ onSettingsClick }) => {
+const Header = ({ onSettingsClick, onHelpClick }) => {
   const animationsEnabled = useSettingsStore(
     (state) => state.animationsEnabled
   );
@@ -35,19 +35,33 @@ const Header = ({ onSettingsClick }) => {
         </div>
       </div>
 
-      {/* Settings Button */}
-      <button
-        onClick={onSettingsClick}
-        className={`
-          p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg 
-          hover:shadow-xl border border-slate-200 dark:border-slate-700
-          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-          ${animationsEnabled ? "transition-all hover:scale-105" : ""}
-        `}
-        aria-label="Open Settings"
-      >
-        <Settings className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-      </button>
+      {/* Actions: Help + Settings */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onHelpClick}
+          className={`
+            p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg 
+            hover:shadow-xl border border-slate-200 dark:border-slate-700
+            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+            ${animationsEnabled ? "transition-all hover:scale-105" : ""}
+          `}
+          aria-label="Open Instructions"
+        >
+          <Info className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+        </button>
+        <button
+          onClick={onSettingsClick}
+          className={`
+            p-3 rounded-xl bg-white dark:bg-slate-800 shadow-lg 
+            hover:shadow-xl border border-slate-200 dark:border-slate-700
+            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+            ${animationsEnabled ? "transition-all hover:scale-105" : ""}
+          `}
+          aria-label="Open Settings"
+        >
+          <Settings className="w-5 h-5 text-slate-700 dark:text-slate-300" />
+        </button>
+      </div>
     </header>
   );
 };

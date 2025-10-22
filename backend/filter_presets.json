@@ -19,5 +19,59 @@
       "build",
       ".vscode"
     ]
+  },
+  "riy": {
+    "folder": "/Users/marc/WhenWhereWho-SharedRebuild/WWWApp/WhenWhereWho/WhenWhereWho",
+    "size_filter": "all",
+    "time_filter": "none",
+    "selected_types": [],
+    "project_types": [],
+    "deep_scan": true,
+    "deep_scan_terms": [
+      "Created by Dashboard"
+    ],
+    "deep_scan_mode": "ANY",
+    "include_exts": [],
+    "exclude_exts": [
+      ".md",
+      ".txt"
+    ],
+    "excluded_folders": [
+      "venv",
+      ".git",
+      "__pycache__",
+      ".idea",
+      "dist",
+      "build",
+      ".vscode",
+      "node_modules"
+    ]
+  },
+  "WWWDefault": {
+    "folder": "/Users/marc/WhenWhereWho-SharedRebuild/WWWApp/WhenWhereWho/WhenWhereWho",
+    "destination": "/Users/marc/Downloads",
+    "output_folder_name": "WWWFilesSearch",
+    "size_filter": "all",
+    "time_filter": "none",
+    "selected_types": [],
+    "project_types": [],
+    "deep_scan": false,
+    "deep_scan_terms": [],
+    "deep_scan_mode": "ANY",
+    "include_exts": [],
+    "exclude_exts": [
+      ".md",
+      ".txt"
+    ],
+    "excluded_folders": [
+      "node_modules",
+      "venv",
+      ".git",
+      "__pycache__",
+      ".idea",
+      "dist",
+      "build",
+      ".vscode"
+    ]
   }
 }

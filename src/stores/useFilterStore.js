@@ -29,6 +29,8 @@ const useFilterStore = create(
       
       // File type selection (semantic types)
       selectedFileTypes: new Set(),
+  // Project Type selection (semantic roles like Models, Views, Controllers)
+  selectedProjectTypes: new Set(),
       
       // Folder exclusions (default persistent exclusions)
       excludedFolders: new Set([
@@ -103,6 +105,30 @@ const useFilterStore = create(
       clearFileTypes: () => set({ selectedFileTypes: new Set() }),
       
       setFileTypes: (types) => set({ selectedFileTypes: new Set(types) }),
+
+      // Actions: Project Types (semantic roles)
+      addProjectType: (type) =>
+        set((state) => ({
+          selectedProjectTypes: new Set([...state.selectedProjectTypes, type])
+        })),
+
+      removeProjectType: (type) =>
+        set((state) => {
+          const newTypes = new Set(state.selectedProjectTypes);
+          newTypes.delete(type);
+          return { selectedProjectTypes: newTypes };
+        }),
+
+      toggleProjectType: (type) =>
+        set((state) => {
+          const newTypes = new Set(state.selectedProjectTypes);
+          if (newTypes.has(type)) newTypes.delete(type); else newTypes.add(type);
+          return { selectedProjectTypes: newTypes };
+        }),
+
+      clearProjectTypes: () => set({ selectedProjectTypes: new Set() }),
+
+      setProjectTypes: (types) => set({ selectedProjectTypes: new Set(types) }),
       
       // Actions: Default Folder Exclusions (persistent)
       addExcludedFolder: (folder) =>
@@ -215,9 +241,12 @@ const useFilterStore = create(
         
         return {
           folder: state.sourceFolder,
+          destination: state.destinationFolder,
+          output_folder_name: state.outputFolderName,
           size_filter: state.sizeFilter,
           time_filter: state.timeFilter,
           selected_types: Array.from(state.selectedFileTypes),
+          project_types: Array.from(state.selectedProjectTypes),
           deep_scan: state.deepScan,
           deep_scan_terms: state.deepScanTerms.filter(t => t.trim()),
           deep_scan_mode: state.deepScanMode.toUpperCase(), // Convert 'any' to 'OR', 'all' to 'AND'
@@ -241,6 +270,7 @@ const useFilterStore = create(
           sizeFilter: 'all',
           timeFilter: 'none',
           selectedFileTypes: new Set(),
+          selectedProjectTypes: new Set(),
           deepScan: false,
           deepScanTerms: [''],
           deepScanMode: 'any',
@@ -259,18 +289,27 @@ const useFilterStore = create(
       
       // Utility: Load preset configuration
       loadPresetConfig: (config) =>
-        set({
-          includeExtensions: config.include_exts?.join(', ') || '',
-          excludeExtensions: config.exclude_exts?.join(', ') || '',
-          sizeFilter: config.size_filter || 'all',
-          timeFilter: config.time_filter || 'none',
-          selectedFileTypes: new Set(config.selected_types || []),
-          deepScan: config.deep_scan || false,
-          deepScanTerms: config.deep_scan_terms || [''],
-          deepScanMode: config.deep_scan_mode?.toLowerCase() || 'any',
-          excludedFolders: new Set(config.excluded_folders || []),
+        set((state) => ({
+          // top-level I/O folders
+          sourceFolder: config.folder ?? state.sourceFolder,
+          destinationFolder: config.destination ?? state.destinationFolder,
+          outputFolderName: config.output_folder_name ?? state.outputFolderName,
+          includeExtensions: Array.isArray(config.include_exts)
+            ? config.include_exts.join(', ')
+            : (config.includeExtensions ?? state.includeExtensions ?? ''),
+          excludeExtensions: Array.isArray(config.exclude_exts)
+            ? config.exclude_exts.join(', ')
+            : (config.excludeExtensions ?? state.excludeExtensions ?? ''),
+          sizeFilter: config.size_filter ?? state.sizeFilter ?? 'all',
+          timeFilter: config.time_filter ?? state.timeFilter ?? 'none',
+          selectedFileTypes: new Set(config.selected_types || Array.from(state.selectedFileTypes || [])),
+          selectedProjectTypes: new Set(config.project_types || Array.from(state.selectedProjectTypes || [])),
+          deepScan: config.deep_scan ?? state.deepScan ?? false,
+          deepScanTerms: config.deep_scan_terms || state.deepScanTerms || [''],
+          deepScanMode: (config.deep_scan_mode?.toLowerCase?.() || state.deepScanMode || 'any'),
+          excludedFolders: new Set(config.excluded_folders || Array.from(state.excludedFolders || [])),
           customExcludedFolders: new Set()
-        })
+        }))
     }),
     {
       name: 'file-filter-store',
@@ -281,7 +320,9 @@ const useFilterStore = create(
         sizeFilter: state.sizeFilter,
         timeFilter: state.timeFilter,
         excludedFolders: Array.from(state.excludedFolders),
-        deepScanMode: state.deepScanMode
+        deepScanMode: state.deepScanMode,
+        selectedProjectTypes: Array.from(state.selectedProjectTypes),
+        selectedFileTypes: Array.from(state.selectedFileTypes)
       }),
       onRehydrateStorage: () => (state) => {
         // Convert arrays back to Sets when loading from storage
@@ -290,6 +331,9 @@ const useFilterStore = create(
         }
         if (state && state.selectedFileTypes && Array.isArray(state.selectedFileTypes)) {
           state.selectedFileTypes = new Set(state.selectedFileTypes);
+        }
+        if (state && state.selectedProjectTypes && Array.isArray(state.selectedProjectTypes)) {
+          state.selectedProjectTypes = new Set(state.selectedProjectTypes);
         }
         // Ensure custom exclusions start empty
         if (state) {

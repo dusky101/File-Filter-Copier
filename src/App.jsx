@@ -11,7 +11,10 @@ import Header from "./components/layout/Header";
 import SettingsPanel from "./components/layout/SettingsPanel";
 import MainConfigSection from "./components/main-config/MainConfigSection";
 import PreviewSection from "./components/preview/PreviewSection";
-import AdvancedFiltersPanel from "./components/filters/AdvancedFiltersPanel";
+// import AdvancedFiltersPanel from "./components/filters/AdvancedFiltersPanel";
+import FilterHub from "./components/filters/FilterHub";
+import InstructionsHub from "./components/help/InstructionsHub";
+import PresetManagerPanel from "./components/presets/PresetManagerPanel";
 import useFilterStore from "./stores/useFilterStore";
 import usePreviewStore from "./stores/usePreviewStore";
 import useSettingsStore from "./stores/useSettingsStore";
@@ -21,6 +24,7 @@ import {
   savePreset,
   healthCheck,
   startProgress,
+  loadPreset,
 } from "./services/api";
 import DeepScanProgressModal from "./components/progress/DeepScanProgressModal";
 import PresetNameDialog from "./utils/PresetNameDialog";
@@ -28,6 +32,9 @@ import PresetNameDialog from "./utils/PresetNameDialog";
 function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [showFilterHub, setShowFilterHub] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
+  const [showPresetManager, setShowPresetManager] = useState(false);
 
   // progress modal state
   const [progressState, setProgressState] = useState({ open: false, id: null });
@@ -39,6 +46,16 @@ function App() {
     dryRun,
     toggleDryRun,
     getFilterConfig,
+    includeExtensions,
+    excludeExtensions,
+    sizeFilter,
+    timeFilter,
+    selectedFileTypes,
+    selectedProjectTypes,
+    excludedFolders,
+    customExcludedFolders,
+    deepScan,
+    deepScanTerms,
   } = useFilterStore();
 
   const { setFiles, setDuplicates, setLoading, setError, clearPreview } =
@@ -47,12 +64,72 @@ function App() {
   const [showPresetDialog, setShowPresetDialog] = useState(false);
 
   const { animationsEnabled } = useSettingsStore();
+  const { defaultPresetName } = useSettingsStore();
+  const { getNextOutputNameForPreset } = useSettingsStore();
+  const { loadPresetConfig } = useFilterStore();
+
+  // Derive active filters count for quick glance
+  const activeFiltersCount = (() => {
+    let c = 0;
+    if (includeExtensions && includeExtensions.trim()) c++;
+    if (excludeExtensions && excludeExtensions.trim()) c++;
+    if (sizeFilter && sizeFilter !== "all") c++;
+    if (timeFilter && timeFilter !== "none") c++;
+    if (selectedFileTypes && selectedFileTypes.size > 0) c++;
+    if (selectedProjectTypes && selectedProjectTypes.size > 0) c++;
+    if (
+      (excludedFolders && excludedFolders.size > 0) ||
+      (customExcludedFolders && customExcludedFolders.size > 0)
+    )
+      c++;
+    if (
+      deepScan ||
+      (Array.isArray(deepScanTerms) &&
+        deepScanTerms.some((t) => (t || "").trim()))
+    )
+      c++;
+    return c;
+  })();
 
   /**
    * Check backend health on mount
    */
   useEffect(() => {
     checkBackendHealth();
+  }, []);
+  // Load default preset on start if configured
+  useEffect(() => {
+    const loadDefault = async () => {
+      if (!defaultPresetName) return;
+      try {
+        const res = await loadPreset(defaultPresetName);
+        if (res.success) {
+          const cfg = res.data?.config || res.data;
+          // Compute next output folder name for this preset as we do in the Preset Manager
+          const baseOut = cfg.output_folder_name || cfg.outputFolderName;
+          if (baseOut && getNextOutputNameForPreset) {
+            const nextOut = getNextOutputNameForPreset(
+              defaultPresetName,
+              baseOut
+            );
+            cfg.output_folder_name = nextOut;
+          }
+          loadPresetConfig(cfg);
+          console.log(
+            `✅ Default preset \"${defaultPresetName}\" applied.` +
+              (cfg.output_folder_name
+                ? ` Output set to: ${cfg.output_folder_name}`
+                : "")
+          );
+        } else {
+          console.warn("Default preset failed to load:", res.error);
+        }
+      } catch (e) {
+        console.warn("Default preset failed to load:", e);
+      }
+    };
+    loadDefault();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -255,7 +332,10 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <Header onSettingsClick={() => setShowSettings(true)} />
+        <Header
+          onSettingsClick={() => setShowSettings(true)}
+          onHelpClick={() => setShowInstructions(true)}
+        />
 
         {/* Settings Panel */}
         <SettingsPanel
@@ -264,10 +344,33 @@ function App() {
         />
 
         {/* Main Configuration Section (Source, Destination, Output - NO dry run) */}
-        <MainConfigSection />
+        <MainConfigSection
+          onOpenPresetManager={() => setShowPresetManager(true)}
+        />
 
-        {/* Advanced Filters Panel */}
-        <AdvancedFiltersPanel />
+        {/* Filters entrypoint */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+            <div>
+              <div className="font-semibold text-slate-900 dark:text-white">
+                Filters
+              </div>
+              <div className="text-xs text-slate-600 dark:text-slate-400">
+                Open the Filter Hub to configure file types, extensions, time,
+                size, and more
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowFilterHub(true)}
+                className={`px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow hover:shadow-md ${animationsEnabled ? "transition-all hover:scale-105" : ""}`}
+              >
+                Open Filters
+                {activeFiltersCount ? ` (${activeFiltersCount})` : ""}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Dry Run Toggle - Moved here, just above action buttons */}
         <div className="mb-6">
@@ -336,7 +439,7 @@ function App() {
           </button>
         </div>
 
-        {/* Preview Section - NOW directly below action buttons! */}
+        {/* Preview Section - stays below action buttons */}
         <PreviewSection />
 
         {/* Progress Modal */}
@@ -353,6 +456,15 @@ function App() {
           onSave={handleConfirmSavePreset}
         />
       </div>
+      <FilterHub open={showFilterHub} onClose={() => setShowFilterHub(false)} />
+      <InstructionsHub
+        open={showInstructions}
+        onClose={() => setShowInstructions(false)}
+      />
+      <PresetManagerPanel
+        isOpen={showPresetManager}
+        onClose={() => setShowPresetManager(false)}
+      />
     </div>
   );
 }

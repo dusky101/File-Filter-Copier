@@ -11,6 +11,8 @@ const usePreviewStore = create((set, get) => ({
   filteredFiles: [],
   totalFiles: 0,
   duplicates: {},
+  // Option: whether to exclude duplicates from display/export (set via Filter Hub)
+  excludeDuplicates: false,
   
   // Loading and error states
   isLoading: false,
@@ -43,6 +45,7 @@ const usePreviewStore = create((set, get) => ({
   },
   
   setDuplicates: (duplicates) => set({ duplicates }),
+  setExcludeDuplicates: (exclude) => set({ excludeDuplicates: !!exclude }),
   
   // Actions: Loading states
   setLoading: (isLoading) => set({ isLoading }),

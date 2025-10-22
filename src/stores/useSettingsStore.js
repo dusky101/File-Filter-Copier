@@ -39,6 +39,10 @@ const useSettingsStore = create(
       windowWidth: 1200,
       windowHeight: 800,
       windowMaximised: false,
+
+  // Presets
+  defaultPresetName: '',
+  presetOutputCounters: {}, // { [presetName]: number }
       
       // Recent folders (for quick access)
       recentSourceFolders: [],
@@ -119,6 +123,25 @@ const useSettingsStore = create(
           recentSourceFolders: [],
           recentDestinationFolders: []
         }),
+
+      // Presets actions
+      setDefaultPresetName: (name) => set({ defaultPresetName: name || '' }),
+      clearDefaultPresetName: () => set({ defaultPresetName: '' }),
+      getNextOutputNameForPreset: (presetName, baseName) => {
+        // returns nextName and updates counter
+        const state = get();
+        const counters = { ...(state.presetOutputCounters || {}) };
+        const current = counters[presetName] || 0;
+        // Split trailing number from base
+        const m = String(baseName || '').match(/^(.*?)(\d+)$/);
+        const root = m ? m[1] : String(baseName || 'Output');
+        const startFrom = m ? parseInt(m[2], 10) : 0;
+        const nextIndex = current > 0 ? current + 1 : (startFrom > 0 ? startFrom + 1 : 1);
+        const nextName = `${root}${nextIndex}`;
+        counters[presetName] = nextIndex;
+        set({ presetOutputCounters: counters });
+        return nextName;
+      },
       
       // Utility: Reset all settings to defaults
       resetSettings: () =>

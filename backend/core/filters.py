@@ -34,8 +34,38 @@ def filter_files(source_folder, size_filter, time_filter, semantic_types,
     matching_files = []
     now = time.time()
 
-    # Parse size filter
+    # Parse size filter (supports predefined keys and custom ranges)
     min_size, max_size = SIZE_FILTERS.get(size_filter, SIZE_FILTERS['all'])
+    # Custom size filter format: "custom:<min>-<max><unit>" where unit in KB|MB|GB
+    # Examples: custom:0-5MB, custom:10MB-100MB, custom:100MB-inf
+    if isinstance(size_filter, str) and size_filter.startswith("custom:"):
+        try:
+            spec = size_filter.split(":", 1)[1]
+            # Allow "inf" for max
+            rng = spec.split("-", 1)
+            if len(rng) != 2:
+                raise ValueError("Invalid custom size spec")
+            def parse_part(part: str) -> float:
+                p = part.strip().lower()
+                if p in ("inf", "+inf", "infinity"):
+                    return float('inf')
+                # numeric with unit suffix
+                if p.endswith("kb"):
+                    return float(p[:-2]) * KB
+                if p.endswith("mb"):
+                    return float(p[:-2]) * MB
+                if p.endswith("gb"):
+                    return float(p[:-2]) * GB
+                # raw bytes
+                return float(p)
+            min_size = parse_part(rng[0])
+            max_size = parse_part(rng[1])
+            # normalize if min > max: swap
+            if min_size > max_size:
+                min_size, max_size = max_size, min_size
+        except Exception as e:
+            print(f"Warning: Invalid custom size filter '{size_filter}': {e}")
+            min_size, max_size = SIZE_FILTERS['all']
 
     # Time filter setup
     apply_time_filter = time_filter != "none"

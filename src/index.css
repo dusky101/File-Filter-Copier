@@ -119,3 +119,50 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* --- Quick Filters: premium hover/selection effects --- */
+/* Shine sweep on hover using a pseudo-element; attach to buttons with `btn-shine` */
+.btn-shine {
+  position: relative;
+  overflow: hidden;
+}
+.btn-shine::before {
+  content: "";
+  position: absolute;
+  top: -150%;
+  left: -35%;
+  width: 35%;
+  height: 400%;
+  transform: translateX(-120%) rotate(12deg);
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.6),
+    rgba(255, 255, 255, 0)
+  );
+  opacity: 0;
+  transition:
+    transform 700ms ease-out,
+    opacity 150ms ease-out;
+  pointer-events: none;
+}
+.btn-shine:hover::before {
+  transform: translateX(240%) rotate(12deg);
+  opacity: 1;
+}
+
+/* One‑shot pulse aura when a preset becomes active */
+@keyframes selected-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.55);
+    opacity: 1;
+  }
+  100% {
+    box-shadow: 0 0 0 24px rgba(139, 92, 246, 0);
+    opacity: 0;
+  }
+}
+.animate-selected-pulse {
+  animation: selected-pulse 700ms ease-out forwards;
+  border-radius: 0.75rem; /* match rounded-xl */
+}
