@@ -56,7 +56,7 @@ const AdvancedFiltersPanel = () => {
     toggleAdvancedFilters,
     toggleFileTypeSelector,
     toggleFolderExclusions,
-    toggleDeepScan,
+    toggleShowDeepScan,
     setDeepScan,
     updateDeepScanTerm,
     addDeepScanTerm,
@@ -503,7 +503,7 @@ const AdvancedFiltersPanel = () => {
                 );
                 if (!proceed) return;
               }
-              toggleDeepScan();
+              toggleShowDeepScan();
             }}
             className={`
               w-full mb-6 bg-gradient-to-r from-slate-100 to-slate-200 

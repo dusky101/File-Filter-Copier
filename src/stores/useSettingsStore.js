@@ -34,6 +34,11 @@ const useSettingsStore = create(
       // Export settings
       defaultExportFormat: 'txt', // 'txt', 'csv', 'json'
       includeMetadataInExport: true,
+
+  // Network/operations timeouts
+  // Timeout in milliseconds for long-running requests (scan/copy). Set to 0 to disable.
+  requestTimeoutMs: 300000, // default 5 minutes
+  disableRequestTimeout: false,
       
       // Window settings (for Electron)
       windowWidth: 1200,
@@ -98,6 +103,15 @@ const useSettingsStore = create(
       setDefaultExportFormat: (format) => set({ defaultExportFormat: format }),
       toggleMetadataInExport: () =>
         set((state) => ({ includeMetadataInExport: !state.includeMetadataInExport })),
+
+      // Actions: Timeout settings
+      setRequestTimeoutMs: (ms) => set({ requestTimeoutMs: Math.max(0, Number(ms) || 0) }),
+      toggleDisableRequestTimeout: () =>
+        set((state) => ({ disableRequestTimeout: !state.disableRequestTimeout })),
+      getRequestTimeout: () => {
+        const s = get();
+        return s.disableRequestTimeout ? 0 : (Number(s.requestTimeoutMs) || 0);
+      },
       
       // Actions: Window settings
       setWindowSize: (width, height) => set({ windowWidth: width, windowHeight: height }),
@@ -159,7 +173,9 @@ const useSettingsStore = create(
           defaultSortBy: 'name',
           defaultSortOrder: 'asc',
           defaultExportFormat: 'txt',
-          includeMetadataInExport: true
+          includeMetadataInExport: true,
+          requestTimeoutMs: 300000,
+          disableRequestTimeout: false
         }),
       
       // Utility: Get display columns configuration

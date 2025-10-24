@@ -2,54 +2,100 @@
 API Routes for File Filter Copier
 FastAPI endpoints for file scanning, filtering, and copying operations
 """
-
 import os
+import json
 import sys
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
 from pathlib import Path
+from fastapi import APIRouter, Request, HTTPException  # added HTTPException
+from fastapi.responses import StreamingResponse, JSONResponse
 
 # Import core functionality
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from core.filters import filter_files, SIZE_FILTERS  # expose SIZE_FILTERS for estimation
-from core.file_ops import copy_files_and_log
-from core.duplicate_checker import detect_duplicates
-from core.utils import format_size, format_timestamp
-from features.extension_filter import filter_by_extension
-from features.hidden_filter import filter_hidden_files
-from api.progress import manager  # new
-from features.preset_manager import save_preset, load_preset, list_presets, delete_preset
+from core.filters import filter_files, SIZE_FILTERS  # noqa: F401
+from core.file_ops import copy_files_and_log  # noqa: F401
+from core.duplicate_checker import detect_duplicates  # noqa: F401
+from core.utils import format_size, format_timestamp  # noqa: F401
+from features.extension_filter import filter_by_extension  # noqa: F401
+from features.hidden_filter import filter_hidden_files  # noqa: F401
+from features.preset_manager import (  # noqa: F401
+    save_preset, load_preset, list_presets, delete_preset
+)
 
-
+from api.progress import manager
 from api.models import (
-    ScanRequest, 
-    ScanResponse, 
+    ScanRequest,
+    ScanResponse,
     FileResult,
-    CopyRequest, 
+    CopyRequest,
     CopyResponse,
     PresetRequest,
-    PresetResponse
+    PresetResponse,
 )
 
 router = APIRouter()
 
+
+# Load default excluded folders from backend/excluded_folders.json (if present)
+def _load_default_exclusions() -> set[str]:
+    try:
+        cfg_path = Path(__file__).resolve().parent.parent / "excluded_folders.json"
+        if cfg_path.exists():
+            data = json.loads(cfg_path.read_text())
+            return {str(x).strip() for x in data if str(x).strip()}
+    except Exception:
+        pass
+    # Fallback hard-coded set
+    return {
+        "node_modules", ".git", ".hg", ".svn",
+        "__pycache__", ".pytest_cache",
+        ".venv", "venv", "env",
+        "dist", "build", ".next", ".cache", ".turbo",
+    }
+
+
+DEFAULT_EXCLUDED_FOLDERS = _load_default_exclusions()
+
+
+@router.get("/excluded-folders/defaults")
+async def get_default_excluded_folders():
+    return {"defaults": sorted(DEFAULT_EXCLUDED_FOLDERS)}
+
+
 @router.post("/progress/start")
 async def start_progress_channel():
-    """
-    Create a progress channel before starting a deep scan.
-    Frontend will receive a progress_id to subscribe via SSE.
-    """
-    # initialize empty; will be set by /scan when it estimates
-    pid = manager.create(total_files=0, total_bytes=0)
+    pid = manager.create()
     return {"progress_id": pid}
+
 
 @router.get("/progress/{pid}/stream")
 async def stream_progress(pid: str):
-    """
-    Server-Sent Events stream of deep-scan progress updates.
-    """
-    return StreamingResponse(manager.stream(pid), media_type="text/event-stream")
+    return StreamingResponse(
+        manager.stream(pid),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# Helper to confine results to the selected root and skip links
+def _confine_to_root(paths: list[str], root: str) -> list[str]:
+    root_real = os.path.realpath(root)
+    prefix = root_real + os.sep
+    safe: list[str] = []
+    for p in paths:
+        try:
+            if os.path.islink(p):  # skip symlinks entirely
+                continue
+            rp = os.path.realpath(p)
+            if rp.startswith(prefix):
+                safe.append(p)
+        except Exception:
+            continue
+    return safe
+
 
 @router.post("/scan", response_model=ScanResponse)
 async def scan_files(request: ScanRequest, http_req: Request):
@@ -65,11 +111,11 @@ async def scan_files(request: ScanRequest, http_req: Request):
             raise HTTPException(status_code=400, detail="Source path is not a directory")
 
         # Optional progress channel
+        # Use SSE only when client requested and deep scan really runs
         progress_id = http_req.headers.get("x-progress-id")
         use_progress = bool(progress_id and request.deep_scan and request.deep_scan_terms)
 
-        # If progress requested, estimate candidate files for deep scan and set totals
-        # We reuse filter_files without deep scan to get candidate list, then apply ext+hidden filters.
+        # When estimating totals for progress, also apply default exclusions and skip symlinks
         if use_progress:
             # Candidate pass 1: size/time only
             prelim = filter_files(
@@ -89,16 +135,17 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 exclude_exts=request.exclude_exts
             )
 
-            # Hidden/system/excluded folders
+            # Hidden/system/excluded folders (+ backend defaults)
             prelim_paths = filter_hidden_files(
                 prelim_paths,
                 exclude_dotfiles=True,
                 exclude_system=True,
                 exclude_hidden_dirs=True,
                 exclude_folders=True,
-                excluded_folder_names=set(request.excluded_folders or [])
+                excluded_folder_names=set(request.excluded_folders or []) | DEFAULT_EXCLUDED_FOLDERS,
             )
-
+            prelim_paths = [p for p in prelim_paths if not os.path.islink(p) and os.path.isfile(p)]
+            prelim_paths = _confine_to_root(prelim_paths, request.folder)  # confine
             total_files = len(prelim_paths)
             total_bytes = 0
             for p in prelim_paths:
@@ -150,15 +197,19 @@ async def scan_files(request: ScanRequest, http_req: Request):
             exclude_exts=request.exclude_exts
         )
 
-        # Step 3: Remove hidden/system files and excluded folders
+        # Step 3: Remove hidden/system files and excluded folders (+ backend defaults)
         filtered_paths = filter_hidden_files(
             filtered_paths,
             exclude_dotfiles=True,
             exclude_system=True,
             exclude_hidden_dirs=True,
             exclude_folders=True,
-            excluded_folder_names=set(request.excluded_folders or [])
+            excluded_folder_names=set(request.excluded_folders or []) | DEFAULT_EXCLUDED_FOLDERS,
         )
+
+        # Skip symlinks/non-regular files and confine to root
+        filtered_paths = [p for p in filtered_paths if not os.path.islink(p) and os.path.isfile(p)]
+        filtered_paths = _confine_to_root(filtered_paths, request.folder)
 
         # Step 4: Map semantic types back to filtered paths
         semantic_map = {path: sem for path, sem in raw_files}

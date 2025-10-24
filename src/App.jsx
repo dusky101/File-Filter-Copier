@@ -26,8 +26,8 @@ import {
   startProgress,
   loadPreset,
 } from "./services/api";
-import DeepScanProgressModal from "./components/progress/DeepScanProgressModal";
 import PresetNameDialog from "./utils/PresetNameDialog";
+import InlineDeepScanProgress from "./components/progress/InlineDeepScanProgress";
 
 function App() {
   const [showSettings, setShowSettings] = useState(false);
@@ -67,6 +67,7 @@ function App() {
   const { defaultPresetName } = useSettingsStore();
   const { getNextOutputNameForPreset } = useSettingsStore();
   const { loadPresetConfig } = useFilterStore();
+  const { getRequestTimeout } = useSettingsStore();
 
   // Derive active filters count for quick glance
   const activeFiltersCount = (() => {
@@ -170,25 +171,34 @@ function App() {
     return true;
   };
 
-  // Helper: run scan with optional progress modal
+  // Helper: run scan with inline progress bar
   const runScanWithOptionalProgress = async (config) => {
     const hasTerms =
       Array.isArray(config.deep_scan_terms) &&
       config.deep_scan_terms.some((t) => String(t || "").trim().length > 0);
-    const wantsProgress = !config.deep_scan && hasTerms;
+    // Show progress only when deep scan is enabled and terms exist (backend streams only in that case)
+    const wantsProgress = !!config.deep_scan && hasTerms;
 
     let progressId = null;
     if (wantsProgress) {
+      // Open UI immediately; we will attach SSE if channel is created
+      setProgressState({ open: true, id: null });
       const res = await startProgress();
       if (res.success && res.data?.progress_id) {
         progressId = res.data.progress_id;
         setProgressState({ open: true, id: progressId });
+      } else {
+        console.warn(
+          "Progress channel could not be created; falling back to indeterminate UI"
+        );
       }
     }
 
     try {
       // pass progressId so backend publishes SSE updates
-      const result = await scanFiles(config, { progressId, timeout: 300000 });
+      const timeout =
+        typeof getRequestTimeout === "function" ? getRequestTimeout() : 300000;
+      const result = await scanFiles(config, { progressId, timeout });
       return result;
     } finally {
       // The modal auto-closes when SSE marks done; also ensure manual close fallback
@@ -212,12 +222,14 @@ function App() {
 
       const result = await runScanWithOptionalProgress(config);
 
-      if (result.success) {
-        setFiles(result.data.files);
-        setDuplicates(result.data.duplicates);
+      if (result && result.success) {
+        setFiles(result.files || []);
+        setDuplicates(result.duplicates || {});
 
-        const fileCount = result.data.total_files;
-        const duplicateCount = Object.keys(result.data.duplicates || {}).length;
+        const fileCount = Number(
+          result.total_files || (result.files || []).length
+        );
+        const duplicateCount = Object.keys(result.duplicates || {}).length;
 
         let message = `✅ Found ${fileCount} file${fileCount !== 1 ? "s" : ""}!`;
         if (duplicateCount > 0) {
@@ -225,8 +237,9 @@ function App() {
         }
         alert(message);
       } else {
-        setError(result.error || "Failed to scan files");
-        alert(`❌ Error: ${result.error}`);
+        const errMsg = result?.error || "Failed to scan files";
+        setError(errMsg);
+        alert(`❌ Error: ${errMsg}`);
       }
     } catch (error) {
       console.error("Preview failed:", error);
@@ -251,13 +264,15 @@ function App() {
       console.log("📋 Copying with config:", config);
 
       const scanResult = await runScanWithOptionalProgress(config);
-      if (!scanResult.success || scanResult.data.files.length === 0) {
+      const filesList =
+        scanResult && scanResult.success ? scanResult.files || [] : [];
+      if (!scanResult || !scanResult.success || filesList.length === 0) {
         alert("❌ No files to copy. Run a preview first.");
         setIsProcessing(false);
         return;
       }
 
-      const filePaths = scanResult.data.files.map((f) => f.path);
+      const filePaths = filesList.map((f) => f.path);
       const copyRequest = {
         files: filePaths,
         destination: destinationFolder,
@@ -439,15 +454,16 @@ function App() {
           </button>
         </div>
 
+        {/* Inline progress bar for deep search */}
+        <div className="mb-4 flex justify-center">
+          <InlineDeepScanProgress
+            open={!!progressState.open}
+            progressId={progressState.id}
+          />
+        </div>
+
         {/* Preview Section - stays below action buttons */}
         <PreviewSection />
-
-        {/* Progress Modal */}
-        <DeepScanProgressModal
-          open={progressState.open}
-          progressId={progressState.id}
-          onClose={() => setProgressState({ open: false, id: null })}
-        />
 
         {/* Preset Name Dialog */}
         <PresetNameDialog

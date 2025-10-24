@@ -220,7 +220,8 @@ const useFilterStore = create(
       
       setShowFolderExclusions: (value) => set({ showFolderExclusions: value }),
       
-      toggleDeepScan: () =>
+      // UI: toggle visibility of the Deep Scan panel
+      toggleShowDeepScan: () =>
         set((state) => ({ showDeepScan: !state.showDeepScan })),
       
       setShowDeepScan: (value) => set({ showDeepScan: value }),

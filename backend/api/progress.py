@@ -26,12 +26,11 @@ class ProgressChannel:
     async def emit(self):
         await self.queue.put(self.snapshot())
 
-
 class ProgressManager:
     def __init__(self):
         self.channels: Dict[str, ProgressChannel] = {}
 
-    def create(self, total_files: int, total_bytes: int) -> str:
+    def create(self, total_files: int = 0, total_bytes: int = 0) -> str:
         pid = uuid.uuid4().hex
         self.channels[pid] = ProgressChannel(total_files, total_bytes)
         return pid
@@ -42,22 +41,21 @@ class ProgressManager:
     async def stream(self, pid: str):
         ch = self.get(pid)
         if not ch:
-            # one empty event so client can close gracefully
             yield f"data: {json.dumps({'error':'not_found'})}\n\n"
             return
 
-        # emit initial snapshot
+        # send initial snapshot
         await ch.emit()
 
         while True:
             try:
-                item = await ch.queue.get()
+                item = await asyncio.wait_for(ch.queue.get(), timeout=10)
                 yield f"data: {json.dumps(item)}\n\n"
-                # close when done
                 if item.get("done"):
-                    break
-            except asyncio.CancelledError:
-                break
+                    return
+            except asyncio.TimeoutError:
+                # heartbeat to keep SSE alive
+                yield ": keep-alive\n\n"
 
     async def set_current(self, pid: str, path: str):
         ch = self.get(pid)
@@ -80,6 +78,5 @@ class ProgressManager:
             return
         ch.done = True
         await ch.emit()
-        # keep channel around a bit; caller may clean up later
 
 manager = ProgressManager()

@@ -6,16 +6,29 @@
  */
 
 import axios from 'axios';
+import useSettingsStore from '../stores/useSettingsStore';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 300000, // 5 minutes for large/deep scans
+  // default to no timeout; we will provide per-request timeouts from settings
+  timeout: 0,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+const getTimeoutFromSettings = (fallback = 300000) => {
+  try {
+    const state = useSettingsStore.getState();
+    if (!state) return fallback;
+    const t = state.getRequestTimeout ? state.getRequestTimeout() : fallback;
+    return typeof t === 'number' ? t : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
 // Request interceptor for debugging
 apiClient.interceptors.request.use(
@@ -83,38 +96,20 @@ export const listFolders = async (folderPath) => {
  * @param {number} [options.timeout] - override timeout ms
  */
 export const scanFiles = async (filters, options = {}) => {
-  try {
-    const headers = {};
-    if (options.progressId) {
-      headers['x-progress-id'] = options.progressId;
-    }
-    const response = await apiClient.post(
-      '/scan',
-      {
-        folder: filters.folder || '',
-        size_filter: filters.size_filter || '>1KB',
-        time_filter: filters.time_filter || 'none',
-        selected_types: filters.selected_types || [],
-        deep_scan: filters.deep_scan || false,
-        deep_scan_terms: filters.deep_scan_terms || [],
-        deep_scan_mode: filters.deep_scan_mode || 'OR',
-        include_exts: filters.include_exts || null,
-        exclude_exts: filters.exclude_exts || null,
-        excluded_folders: filters.excluded_folders || [],
-      },
-      {
-        headers,
-        timeout: options.timeout || apiClient.defaults.timeout,
-      }
-    );
+  const { progressId, timeout } = options;
+  const headers = {};
+  if (progressId) headers["x-progress-id"] = progressId;
 
-    return { success: true, data: response.data };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.response?.data?.detail || error.message || 'Scan failed',
-    };
-  }
+  const effectiveTimeout =
+    typeof timeout === "number"
+      ? timeout
+      : getTimeoutFromSettings(0); // 0 = no timeout if disabled in settings
+
+  const res = await apiClient.post("/scan", filters, {
+    headers,
+    timeout: effectiveTimeout,
+  });
+  return res.data;
 };
 
 /**
@@ -122,15 +117,8 @@ export const scanFiles = async (filters, options = {}) => {
  * @returns {Promise<{success:boolean, data:{progress_id:string}}>}
  */
 export const startProgress = async () => {
-  try {
-    const response = await apiClient.post('/progress/start');
-    return { success: true, data: response.data };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to start progress',
-    };
-  }
+  const res = await apiClient.post("/progress/start");
+  return { success: true, data: res.data };
 };
 
 // ============================================================
@@ -148,11 +136,12 @@ export const startProgress = async () => {
  */
 export const copyFiles = async (copyRequest) => {
   try {
+    const timeout = getTimeoutFromSettings();
     const response = await apiClient.post('/copy', {
       files: copyRequest.files || [],
       output_folder: copyRequest.outputFolder || 'FilteredFiles',
       destination: copyRequest.destination || '',
-    });
+    }, { timeout });
 
     return {
       success: true,

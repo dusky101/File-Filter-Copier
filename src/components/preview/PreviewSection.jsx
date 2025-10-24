@@ -12,6 +12,9 @@ import {
   Calendar,
   HardDrive,
   FileType,
+  X,
+  Copy,
+  CheckCircle2,
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
@@ -50,6 +53,26 @@ const PreviewSection = ({ onOpenSettings }) => {
   const [sortOrder, setSortOrder] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(defaultItemsPerPage);
+
+  // Duplicates dialog state/hooks (must be before any early return)
+  const [dupOpen, setDupOpen] = useState(false);
+  const [copiedToast, setCopiedToast] = useState(false);
+  const duplicateEntries = useMemo(() => {
+    const obj = duplicates || {};
+    return Object.entries(obj).filter(
+      ([, paths]) => Array.isArray(paths) && paths.length > 1
+    );
+  }, [duplicates]);
+  const duplicateCount = duplicateEntries.length;
+  const copyPaths = async (paths) => {
+    try {
+      await navigator.clipboard.writeText(paths.join("\n"));
+      // show a temporary “Copied” toast
+      setCopiedToast(true);
+      window.clearTimeout(copyPaths._t);
+      copyPaths._t = window.setTimeout(() => setCopiedToast(false), 2000);
+    } catch {}
+  };
 
   // Safety check: ensure filteredFiles is an array (must be before early return)
   const safeFilteredFiles = Array.isArray(filteredFiles) ? filteredFiles : [];
@@ -117,9 +140,7 @@ const PreviewSection = ({ onOpenSettings }) => {
   );
 
   // Don't show preview if dry run is disabled (after all hooks)
-  if (!dryRun) {
-    return null;
-  }
+  if (!dryRun) return null;
 
   /**
    * Handle column header click for sorting
@@ -192,6 +213,16 @@ const PreviewSection = ({ onOpenSettings }) => {
             {safeFilteredFiles.length} file
             {safeFilteredFiles.length !== 1 ? "s" : ""} found
           </span>
+
+          {duplicateCount > 0 && (
+            <button
+              onClick={() => setDupOpen(true)}
+              className="px-3 py-2 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 hover:shadow-sm"
+              title="View duplicate filenames and their paths"
+            >
+              View duplicates ({duplicateCount})
+            </button>
+          )}
 
           {safeFilteredFiles.length > 0 && (
             <>
@@ -442,6 +473,76 @@ const PreviewSection = ({ onOpenSettings }) => {
             >
               Next
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Duplicates Modal */}
+      {dupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setDupOpen(false)}
+          />
+          <div className="relative z-10 w-[90vw] max-w-3xl max-h-[80vh] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                Duplicate filenames ({duplicateCount})
+              </h4>
+              <button
+                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+                onClick={() => setDupOpen(false)}
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-5">
+              {duplicateEntries.map(([name, paths]) => (
+                <div
+                  key={name}
+                  className="rounded-xl border border-slate-200 dark:border-slate-700"
+                >
+                  <div className="flex items-center justify-between px-4 py-4 bg-slate-50 dark:bg-slate-800/60">
+                    <div className="text-sm font-medium text-slate-900 dark:text-white">
+                      {name} <span className="text-slate-500">({paths.length})</span>
+                    </div>
+                    <button
+                      onClick={() => copyPaths(paths)}
+                      className="flex items-center gap-1 text-xs h-8 px-3 rounded border border-slate-300 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      title="Copy all paths"
+                    >
+                      <Copy className="w-3.5 h-3.5" /> Copy paths
+                    </button>
+                  </div>
+                  <ul className="px-4 py-3 space-y-1">
+                    {paths.map((p, i) => (
+                      <li key={i} className="font-mono text-[11px] text-slate-700 dark:text-slate-300 break-all">
+                        {p}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            {/* Fixed footer */}
+            <div className="px-6 py-5 border-t border-slate-200 dark:border-slate-700 text-right">
+              <button
+                onClick={() => setDupOpen(false)}
+                className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            {/* Copied toast */}
+            {copiedToast && (
+              <div className="absolute bottom-4 left-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs shadow">
+                <CheckCircle2 className="w-4 h-4" />
+                Paths copied
+              </div>
+            )}
           </div>
         </div>
       )}

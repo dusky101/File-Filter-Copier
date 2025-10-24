@@ -42,6 +42,11 @@ const SettingsPanel = ({ isOpen, onClose }) => {
     setDefaultExportFormat,
     toggleMetadataInExport,
     resetSettings,
+    // Timeout settings
+    requestTimeoutMs,
+    disableRequestTimeout,
+    setRequestTimeoutMs,
+    toggleDisableRequestTimeout,
   } = useSettingsStore();
 
   // Handle escape key to close panel
@@ -183,6 +188,63 @@ const SettingsPanel = ({ isOpen, onClose }) => {
                     );
                   })}
                 </div>
+              </div>
+            </section>
+
+            {/* Performance / Backend Section */}
+            <section>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-blue-600" />
+                Deep Search Timeout
+              </h3>
+              <div className="space-y-3">
+                <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors">
+                  <div>
+                    <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Disable timeout for long scans
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                      If enabled, requests won't time out (use with care)
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={!!disableRequestTimeout}
+                    onChange={toggleDisableRequestTimeout}
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  />
+                </label>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Request timeout (milliseconds)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={Number(requestTimeoutMs) || 0}
+                      onChange={(e) => setRequestTimeoutMs(e.target.value)}
+                      disabled={!!disableRequestTimeout}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                    />
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setRequestTimeoutMs(300000)}
+                      disabled={!!disableRequestTimeout}
+                      className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors"
+                    >
+                      Set 5 minutes
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Set to 0 or enable "Disable timeout" for unlimited duration.
+                  Applies to deep scan and copy requests.
+                </p>
               </div>
             </section>
 
