@@ -2,8 +2,11 @@
 
 import os
 import time
-from core.file_types import FILE_TYPE_PATTERNS, CONTENT_MARKERS
+import re
+import fnmatch
 from typing import Callable, Optional
+
+from core.file_types import FILE_TYPE_PATTERNS, CONTENT_MARKERS
 
 # Size constants for cleaner code
 KB = 1024
@@ -12,60 +15,91 @@ GB = 1024 * MB
 
 # Size filter mappings
 SIZE_FILTERS = {
-    'all': (0, float('inf')),           # No size limit
-    'small': (0, 1 * MB),               # < 1 MB
-    'medium': (1 * MB, 10 * MB),        # 1 MB - 10 MB
-    'large': (10 * MB, 100 * MB),       # 10 MB - 100 MB
-    'huge': (100 * MB, float('inf')),   # > 100 MB
+    "all": (0, float("inf")),           # No size limit
+    "small": (0, 1 * MB),               # < 1 MB
+    "medium": (1 * MB, 10 * MB),        # 1 MB - 10 MB
+    "large": (10 * MB, 100 * MB),       # 10 MB - 100 MB
+    "huge": (100 * MB, float("inf")),   # > 100 MB
     # Legacy filters for backward compatibility
-    '>1KB': (1 * KB, float('inf')),
-    '<1KB': (0, 1 * KB),
-    '>500MB': (500 * MB, float('inf'))
+    ">1KB": (1 * KB, float("inf")),
+    "<1KB": (0, 1 * KB),
+    ">500MB": (500 * MB, float("inf")),
 }
 
 
-def filter_files(source_folder, size_filter, time_filter, semantic_types,
-                 deep_scan=False, deep_scan_term=None, deep_scan_mode="OR",
-                 progress_callback: Optional[Callable[[str, str, int], None]] = None):
+def filter_files(
+    source_folder,
+    size_filter,
+    time_filter,
+    semantic_types,
+    deep_scan=False,
+    deep_scan_term=None,
+    deep_scan_mode="OR",
+    progress_callback: Optional[Callable[[str, str, int], None]] = None,
+    # Advanced
+    follow_symlinks: bool = False,
+    include_hidden: bool = False,
+    max_depth: int = 0,  # 0 = unlimited
+    name_glob_include: Optional[list[str]] = None,
+    name_glob_exclude: Optional[list[str]] = None,
+    name_regex_include: Optional[str] = None,
+    name_regex_exclude: Optional[str] = None,
+    time_attribute: str = "mtime",  # 'mtime' | 'ctime' | 'atime'
+    deep_scan_max_size_bytes: int = 0,  # 0 = unlimited
+):
     """
     Traverse a folder and return files matching filters.
+    Returns list of (full_path, semantic_type, search_tags).
     progress_callback(event, path, bytes_inc): events 'current' | 'advance'
     """
     matching_files = []
     now = time.time()
+    inc_re = re.compile(name_regex_include, re.IGNORECASE) if name_regex_include else None
+    exc_re = re.compile(name_regex_exclude, re.IGNORECASE) if name_regex_exclude else None
+    inc_globs = [g.strip() for g in (name_glob_include or []) if str(g).strip()]
+    exc_globs = [g.strip() for g in (name_glob_exclude or []) if str(g).strip()]
+
+    def is_hidden_path(p: str) -> bool:
+        parts = [pp for pp in p.split(os.sep) if pp]
+        return any(part.startswith(".") for part in parts)
+
+    def get_time(path: str) -> float:
+        if time_attribute == "ctime":
+            return os.path.getctime(path)
+        if time_attribute == "atime":
+            return os.path.getatime(path)
+        return os.path.getmtime(path)
 
     # Parse size filter (supports predefined keys and custom ranges)
-    min_size, max_size = SIZE_FILTERS.get(size_filter, SIZE_FILTERS['all'])
+    min_size, max_size = SIZE_FILTERS.get(size_filter, SIZE_FILTERS["all"])
     # Custom size filter format: "custom:<min>-<max><unit>" where unit in KB|MB|GB
     # Examples: custom:0-5MB, custom:10MB-100MB, custom:100MB-inf
     if isinstance(size_filter, str) and size_filter.startswith("custom:"):
         try:
             spec = size_filter.split(":", 1)[1]
-            # Allow "inf" for max
             rng = spec.split("-", 1)
             if len(rng) != 2:
                 raise ValueError("Invalid custom size spec")
+
             def parse_part(part: str) -> float:
                 p = part.strip().lower()
                 if p in ("inf", "+inf", "infinity"):
-                    return float('inf')
-                # numeric with unit suffix
+                    return float("inf")
                 if p.endswith("kb"):
                     return float(p[:-2]) * KB
                 if p.endswith("mb"):
                     return float(p[:-2]) * MB
                 if p.endswith("gb"):
                     return float(p[:-2]) * GB
-                # raw bytes
                 return float(p)
+
             min_size = parse_part(rng[0])
             max_size = parse_part(rng[1])
-            # normalize if min > max: swap
             if min_size > max_size:
                 min_size, max_size = max_size, min_size
         except Exception as e:
             print(f"Warning: Invalid custom size filter '{size_filter}': {e}")
-            min_size, max_size = SIZE_FILTERS['all']
+            min_size, max_size = SIZE_FILTERS["all"]
 
     # Time filter setup
     apply_time_filter = time_filter != "none"
@@ -74,44 +108,93 @@ def filter_files(source_folder, size_filter, time_filter, semantic_types,
         time_threshold = _parse_time_filter(time_filter, now)
 
     # Traverse directory
-    for root, _, files in os.walk(source_folder):
+    for root, _, files in os.walk(source_folder, followlinks=follow_symlinks):
+        # Depth check
+        rel = os.path.relpath(root, source_folder)
+        depth = 0 if rel == "." else rel.count(os.sep) + 1
+        if max_depth and depth > max_depth:
+            continue
+        # Hidden dir check
+        if not include_hidden and rel != "." and is_hidden_path(rel):
+            continue
+
         for file in files:
             full_path = os.path.join(root, file)
+            tags: list[str] = []
+
+            # Hidden file check
+            if not include_hidden and file.startswith("."):
+                continue
+
+            # Glob filters (full path and filename)
+            if inc_globs:
+                full_norm = full_path
+                if not any(
+                    fnmatch.fnmatch(full_norm, g) or fnmatch.fnmatch(file, g) for g in inc_globs
+                ):
+                    continue
+                tags.append("Glob")
+            if exc_globs:
+                full_norm = full_path
+                if any(
+                    fnmatch.fnmatch(full_norm, g) or fnmatch.fnmatch(file, g) for g in exc_globs
+                ):
+                    continue
+
+            # Regex filters
+            if inc_re:
+                if not (inc_re.search(file) or inc_re.search(full_path)):
+                    continue
+                tags.append("Regex")
+            if exc_re and (exc_re.search(file) or exc_re.search(full_path)):
+                continue
 
             try:
                 size_bytes = os.path.getsize(full_path)
-                mod_time = os.path.getmtime(full_path)
+                tval = get_time(full_path)
 
-                # Size filter - using constants
+                # Size filter
                 if not (min_size <= size_bytes < max_size):
                     continue
+                if isinstance(size_filter, str):
+                    if size_filter != "all":
+                        tags.append("Size")
+                else:
+                    tags.append("Size")
 
                 # Time filter
                 if apply_time_filter and time_threshold:
-                    if time_filter.startswith("<") and mod_time < time_threshold:
+                    if time_filter.startswith("<") and tval < time_threshold:
                         continue
-                    if time_filter.startswith(">") and mod_time >= time_threshold:
+                    if time_filter.startswith(">") and tval >= time_threshold:
                         continue
+                    tags.append("Time")
 
                 # Semantic / Deep Scan filter
                 matched_type = None
                 if semantic_types or (deep_scan and deep_scan_term):
+                    # Optional deep-scan size cap
+                    allow_deep = True
+                    if deep_scan and deep_scan_max_size_bytes and size_bytes > deep_scan_max_size_bytes:
+                        allow_deep = False
                     matched_type = get_semantic_match(
                         file,
                         root,
                         semantic_types,
-                        deep_scan=deep_scan,
+                        deep_scan=deep_scan and allow_deep,
                         deep_scan_term=deep_scan_term,
                         deep_scan_mode=deep_scan_mode,
-                        # pass progress info so we can update per deep-scanned file
                         file_size=size_bytes,
-                        progress_callback=progress_callback
+                        progress_callback=progress_callback,
                     )
                     if not matched_type:
                         continue
+                    if deep_scan and deep_scan_term:
+                        tags.append("Deep Scan")
+                    if semantic_types:
+                        tags.append("Semantic")
 
-                matching_files.append((full_path, matched_type))
-
+                matching_files.append((full_path, matched_type, tags))
             except Exception as e:
                 print(f"Skipping file due to error: {full_path}\n{e}")
 
@@ -121,7 +204,7 @@ def filter_files(source_folder, size_filter, time_filter, semantic_types,
 def _parse_time_filter(time_filter, now):
     """
     Parse time filter string and return threshold timestamp.
-    
+
     Examples:
     - '<1h' -> files modified in last hour
     - '<24h' -> files modified in last day
@@ -129,13 +212,17 @@ def _parse_time_filter(time_filter, now):
     - '>30d' -> files modified more than 30 days ago
     """
     try:
-        unit = time_filter[-1]
-        value = int(time_filter[1:-1])
-        
+        s = str(time_filter).strip().lower()
+        unit = s[-1]
+        value = int(s[1:-1])
         if unit == "h":
             return now - (value * 3600)
         elif unit == "d":
             return now - (value * 86400)
+        elif unit == "w":
+            return now - (value * 7 * 86400)
+        elif unit == "m":
+            return now - (value * 30 * 86400)
         else:
             raise ValueError(f"Invalid time filter unit: {unit}")
     except Exception as e:
@@ -143,10 +230,16 @@ def _parse_time_filter(time_filter, now):
         return None
 
 
-def get_semantic_match(filename, folder_path, selected_types,
-                       deep_scan=False, deep_scan_term=None, deep_scan_mode="OR",
-                       file_size: int = 0,
-                       progress_callback: Optional[Callable[[str, str, int], None]] = None):
+def get_semantic_match(
+    filename,
+    folder_path,
+    selected_types,
+    deep_scan=False,
+    deep_scan_term=None,
+    deep_scan_mode="OR",
+    file_size: int = 0,
+    progress_callback: Optional[Callable[[str, str, int], None]] = None,
+):
     """
     Match a file against semantic filters and/or deep scan terms.
     """
@@ -186,8 +279,7 @@ def get_semantic_match(filename, folder_path, selected_types,
 
         if terms:
             content_match = _search_file_content(
-                full_path, terms, deep_scan_mode,
-                on_progress=progress_callback, file_size=file_size
+                full_path, terms, deep_scan_mode, on_progress=progress_callback, file_size=file_size
             )
             if content_match:
                 return matched_type or "Deep Scan Match"
@@ -197,9 +289,13 @@ def get_semantic_match(filename, folder_path, selected_types,
     return matched_type
 
 
-def _search_file_content(file_path, search_terms, mode="OR",
-                         on_progress: Optional[Callable[[str, str, int], None]] = None,
-                         file_size: int = 0):
+def _search_file_content(
+    file_path,
+    search_terms,
+    mode="OR",
+    on_progress: Optional[Callable[[str, str, int], None]] = None,
+    file_size: int = 0,
+):
     """
     Search file content for terms. Accepts 'OR'/'AND' and UI-friendly 'any'/'all'.
     Reports progress per file (once) when a deep scan actually occurs.
@@ -217,8 +313,11 @@ def _search_file_content(file_path, search_terms, mode="OR",
 
             mode_norm = (mode or "OR").strip().lower()
             is_and = mode_norm in ("and", "all")
-            matched = all(term.lower() in content for term in search_terms) if is_and \
-                      else any(term.lower() in content for term in search_terms)
+            matched = (
+                all(term.lower() in content for term in search_terms)
+                if is_and
+                else any(term.lower() in content for term in search_terms)
+            )
 
         # advance after scan completes
         if on_progress:

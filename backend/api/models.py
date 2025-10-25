@@ -11,7 +11,7 @@ class ScanRequest(BaseModel):
     """Request model for scanning files with filters"""
     folder: str = Field(..., description="Source folder path to scan")
     size_filter: str = Field(default=">1KB", description="Size filter (>1KB, <1KB, >500MB, all)")
-    time_filter: str = Field(default="all", description="Time filter (<1h, <24h, <7d, <30d, >30d, all)")
+    time_filter: str = Field(default="none", description="Time filter (<1h, <24h, <7d, <30d, >30d, none)")
     selected_types: List[str] = Field(default=[], description="List of semantic file types to include")
     deep_scan: bool = Field(default=False, description="Enable deep content scanning")
     deep_scan_terms: List[str] = Field(default=[], description="Keywords to search for in deep scan")
@@ -19,6 +19,17 @@ class ScanRequest(BaseModel):
     include_exts: Optional[List[str]] = Field(default=None, description="Extensions to include (e.g., ['.py', '.js'])")
     exclude_exts: Optional[List[str]] = Field(default=None, description="Extensions to exclude")
     excluded_folders: List[str] = Field(default=[], description="Folder names to exclude")
+    # Advanced traversal/matching
+    follow_symlinks: bool = Field(default=False, description="Follow symlinks during traversal")
+    include_hidden: bool = Field(default=False, description="Include dotfiles and hidden folders")
+    max_depth: int = Field(default=0, description="Max directory depth (0 = unlimited)")
+    time_attribute: str = Field(default="mtime", description="Which time attribute to use (mtime|ctime|atime)")
+    respect_gitignore: bool = Field(default=False, description="Exclude files ignored by .gitignore at root")
+    name_glob_include: Optional[List[str]] = Field(default=None, description="Glob patterns to include")
+    name_glob_exclude: Optional[List[str]] = Field(default=None, description="Glob patterns to exclude")
+    name_regex_include: Optional[str] = Field(default=None, description="Regex to include (filename or full path)")
+    name_regex_exclude: Optional[str] = Field(default=None, description="Regex to exclude (filename or full path)")
+    deep_scan_max_size_bytes: int = Field(default=0, description="Skip deep scan for files larger than this (bytes)")
 
     class Config:
         json_schema_extra = {
@@ -46,6 +57,7 @@ class FileResult(BaseModel):
     modified: str = Field(..., description="Last modified timestamp")
     created: str = Field(..., description="Creation timestamp")
     semantic_type: Optional[str] = Field(None, description="Semantic file type classification")
+    search_tags: List[str] = Field(default_factory=list, description="Reasons this file matched (Regex, Glob, Size, Time, Deep Scan, Semantic, Extension)")
 
 
 class ScanResponse(BaseModel):
@@ -106,4 +118,5 @@ class PresetResponse(BaseModel):
     success: bool = Field(..., description="Whether the operation was successful")
     presets: Optional[List[str]] = Field(None, description="List of available preset names")
     config: Optional[Dict[str, Any]] = Field(None, description="Preset configuration")
+    default: Optional[str] = Field(None, description="Name of the default preset (if set)")
     error: Optional[str] = Field(None, description="Error message if operation failed")

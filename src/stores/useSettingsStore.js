@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getDefaultPreset } from '../services/api';
 
 const useSettingsStore = create(
   persist(
@@ -46,7 +47,8 @@ const useSettingsStore = create(
       windowMaximised: false,
 
   // Presets
-  defaultPresetName: '',
+  defaultPresetName: null,
+  activePresetName: null,
   presetOutputCounters: {}, // { [presetName]: number }
       
       // Recent folders (for quick access)
@@ -139,7 +141,16 @@ const useSettingsStore = create(
         }),
 
       // Presets actions
-      setDefaultPresetName: (name) => set({ defaultPresetName: name || '' }),
+      setDefaultPresetName: (name) => set({ defaultPresetName: name || null }),
+      setActivePresetName: (name) => set({ activePresetName: name || null }),
+      refreshDefaultPresetName: async () => {
+        try {
+          const res = await getDefaultPreset();
+          set({ defaultPresetName: res?.default ?? null });
+        } catch {
+          set({ defaultPresetName: null });
+        }
+      },
       clearDefaultPresetName: () => set({ defaultPresetName: '' }),
       getNextOutputNameForPreset: (presetName, baseName) => {
         // returns nextName and updates counter

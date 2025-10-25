@@ -343,6 +343,14 @@ function App() {
     return false;
   };
 
+  const [settingsOpen, setSettingsOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const open = () => setSettingsOpen(true);
+    window.addEventListener("open-settings", open);
+    return () => window.removeEventListener("open-settings", open);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
       <div className="max-w-6xl mx-auto">
@@ -401,10 +409,10 @@ function App() {
             </label>
             <div className="flex-1">
               <span className="font-semibold text-slate-900 dark:text-white block">
-                Dry Run (Preview Only)
+                Dry Run (Preview Files Only)
               </span>
               <p className="text-xs text-slate-600 dark:text-slate-400">
-                Preview files without copying them
+                Preview files without copying them in the table below
               </p>
             </div>
           </div>
@@ -463,7 +471,7 @@ function App() {
         </div>
 
         {/* Preview Section - stays below action buttons */}
-        <PreviewSection />
+        <PreviewSection onOpenSettings={() => setShowSettings(true)} />
 
         {/* Preset Name Dialog */}
         <PresetNameDialog

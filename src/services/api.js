@@ -231,6 +231,31 @@ export const deletePreset = async (name) => {
   }
 };
 
+/**
+ * Get the default preset configuration
+ * 
+ * @returns {Promise<Object>} Default preset configuration
+ */
+export const getDefaultPreset = async () =>
+  (await apiClient.get('/presets/default')).data;
+
+/**
+ * Set the default preset by name
+ * 
+ * @param {string} name - Preset name to set as default
+ * @returns {Promise<Object>} Set operation result
+ */
+export const setDefaultPreset = async (name) =>
+  (await apiClient.post('/presets/default', { name })).data;
+
+/**
+ * Clear the default preset
+ * 
+ * @returns {Promise<Object>} Clear operation result
+ */
+export const clearDefaultPreset = async () =>
+  (await apiClient.delete('/presets/default')).data;
+
 // ============================================================
 // Health Check API
 // ============================================================
@@ -319,4 +344,7 @@ export default {
   formatTimestamp,
   startProgress,
   listFolders,
+  getDefaultPreset,
+  setDefaultPreset,
+  clearDefaultPreset,
 };

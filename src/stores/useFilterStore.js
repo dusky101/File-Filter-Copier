@@ -6,6 +6,29 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const initialState = {
+  // Minimal baseline — adjust to your store keys as needed
+  sourceFolder: "",
+  include_exts: [],
+  exclude_exts: [],
+  selected_types: [],
+  size_filter: "all",
+  time_filter: "none",
+  deep_scan: false,
+  deep_scan_terms: [],
+  deep_scan_mode: "OR",
+  follow_symlinks: false,
+  include_hidden: false,
+  max_depth: 0,
+  name_glob_include: [],
+  name_glob_exclude: [],
+  name_regex_include: "",
+  name_regex_exclude: "",
+  time_attribute: "mtime",
+  deep_scan_max_size_bytes: 0,
+  dryRun: true,
+};
+
 const useFilterStore = create(
   persist(
     (set, get) => ({
@@ -59,6 +82,18 @@ const useFilterStore = create(
       showDeepScan: false,
       showCustomFolderModal: false,
       
+      // Advanced options
+      includeHidden: false,
+      followSymlinks: false,
+      maxDepth: 0, // 0 = unlimited
+      timeAttribute: 'mtime', // 'mtime' | 'ctime' | 'atime'
+      respectGitignore: false,
+      nameGlobInclude: '',
+      nameGlobExclude: '',
+      nameRegexInclude: '',
+      nameRegexExclude: '',
+      deepScanMaxSizeMB: 0,
+
       // Actions: Source and Destination
       setSourceFolder: (folder) => set({ sourceFolder: folder }),
       setDestinationFolder: (folder) => set({ destinationFolder: folder }),
@@ -231,38 +266,66 @@ const useFilterStore = create(
       
       setShowCustomFolderModal: (value) => set({ showCustomFolderModal: value }),
       
+      // Advanced setters
+      setIncludeHidden: (v) => set({ includeHidden: !!v }),
+      setFollowSymlinks: (v) => set({ followSymlinks: !!v }),
+      setMaxDepth: (v) => set({ maxDepth: Math.max(0, Number(v) || 0) }),
+      setTimeAttribute: (v) => set({ timeAttribute: v }),
+      setRespectGitignore: (v) => set({ respectGitignore: !!v }),
+      setNameGlobInclude: (s) => set({ nameGlobInclude: s }),
+      setNameGlobExclude: (s) => set({ nameGlobExclude: s }),
+      setNameRegexInclude: (s) => set({ nameRegexInclude: s }),
+      setNameRegexExclude: (s) => set({ nameRegexExclude: s }),
+      setDeepScanMaxSizeMB: (v) => set({ deepScanMaxSizeMB: Math.max(0, Number(v) || 0) }),
+
       // Utility: Get filter configuration for API
       getFilterConfig: () => {
         const state = get();
-        // Combine both default and custom excluded folders
         const allExcludedFolders = new Set([
           ...state.excludedFolders,
           ...state.customExcludedFolders
         ]);
-        
+        const splitList = (s) =>
+          (s || "")
+            .split(/\s*(?:,|\n)\s*/)
+            .map((x) => x.trim())
+            .filter(Boolean);
+
         return {
           folder: state.sourceFolder,
           destination: state.destinationFolder,
           output_folder_name: state.outputFolderName,
           size_filter: state.sizeFilter,
           time_filter: state.timeFilter,
-          selected_types: Array.from(state.selectedFileTypes),
-          project_types: Array.from(state.selectedProjectTypes),
-          deep_scan: state.deepScan,
-          deep_scan_terms: state.deepScanTerms.filter(t => t.trim()),
-          deep_scan_mode: state.deepScanMode.toUpperCase(), // Convert 'any' to 'OR', 'all' to 'AND'
-          include_exts: state.includeExtensions
-            .split(',')
-            .map(e => e.trim())
+          selected_types: Array.from(state.selectedFileTypes || []),
+          project_types: Array.from(state.selectedProjectTypes || []),
+          deep_scan: !!state.deepScan,
+          deep_scan_terms: (state.deepScanTerms || []).filter((t) => (t || "").trim()),
+          deep_scan_mode: (state.deepScanMode || "any").toUpperCase(),
+          include_exts: (state.includeExtensions || "")
+            .split(",")
+            .map((e) => e.trim())
             .filter(Boolean),
-          exclude_exts: state.excludeExtensions
-            .split(',')
-            .map(e => e.trim())
+          exclude_exts: (state.excludeExtensions || "")
+            .split(",")
+            .map((e) => e.trim())
             .filter(Boolean),
-          excluded_folders: Array.from(allExcludedFolders)
+          excluded_folders: Array.from(allExcludedFolders),
+
+          // Advanced
+          follow_symlinks: !!state.followSymlinks,
+          include_hidden: !!state.includeHidden,
+          max_depth: Number(state.maxDepth) || 0,
+          time_attribute: state.timeAttribute || "mtime",
+          respect_gitignore: !!state.respectGitignore,
+          name_glob_include: splitList(state.nameGlobInclude),
+          name_glob_exclude: splitList(state.nameGlobExclude),
+          name_regex_include: state.nameRegexInclude || null,
+          name_regex_exclude: state.nameRegexExclude || null,
+          deep_scan_max_size_bytes: Math.max(0, Number(state.deepScanMaxSizeMB) || 0) * 1024 * 1024,
         };
       },
-      
+
       // Utility: Reset all filters to default
       resetFilters: () =>
         set({
@@ -285,9 +348,21 @@ const useFilterStore = create(
             'build',
             '.vscode'
           ]),
-          customExcludedFolders: new Set()
+          customExcludedFolders: new Set(),
+
+          // Advanced resets
+          includeHidden: false,
+          followSymlinks: false,
+          maxDepth: 0,
+          timeAttribute: 'mtime',
+          respectGitignore: false,
+          nameGlobInclude: '',
+          nameGlobExclude: '',
+          nameRegexInclude: '',
+          nameRegexExclude: '',
+          deepScanMaxSizeMB: 0,
         }),
-      
+
       // Utility: Load preset configuration
       loadPresetConfig: (config) =>
         set((state) => ({
@@ -310,7 +385,8 @@ const useFilterStore = create(
           deepScanMode: (config.deep_scan_mode?.toLowerCase?.() || state.deepScanMode || 'any'),
           excludedFolders: new Set(config.excluded_folders || Array.from(state.excludedFolders || [])),
           customExcludedFolders: new Set()
-        }))
+        })),
+      resetToBlank: () => set(() => ({ ...initialState })),
     }),
     {
       name: 'file-filter-store',
@@ -323,7 +399,19 @@ const useFilterStore = create(
         excludedFolders: Array.from(state.excludedFolders),
         deepScanMode: state.deepScanMode,
         selectedProjectTypes: Array.from(state.selectedProjectTypes),
-        selectedFileTypes: Array.from(state.selectedFileTypes)
+        selectedFileTypes: Array.from(state.selectedFileTypes),
+
+        // Persist advanced
+        includeHidden: state.includeHidden,
+        followSymlinks: state.followSymlinks,
+        maxDepth: state.maxDepth,
+        timeAttribute: state.timeAttribute,
+        respectGitignore: state.respectGitignore,
+        nameGlobInclude: state.nameGlobInclude,
+        nameGlobExclude: state.nameGlobExclude,
+        nameRegexInclude: state.nameRegexInclude,
+        nameRegexExclude: state.nameRegexExclude,
+        deepScanMaxSizeMB: state.deepScanMaxSizeMB,
       }),
       onRehydrateStorage: () => (state) => {
         // Convert arrays back to Sets when loading from storage

@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException  # added HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
+import fnmatch
 
 # Import core functionality
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -18,9 +19,11 @@ from core.duplicate_checker import detect_duplicates  # noqa: F401
 from core.utils import format_size, format_timestamp  # noqa: F401
 from features.extension_filter import filter_by_extension  # noqa: F401
 from features.hidden_filter import filter_hidden_files  # noqa: F401
-from features.preset_manager import (  # noqa: F401
-    save_preset, load_preset, list_presets, delete_preset
+from features.preset_manager import (
+    list_presets, save_preset, load_preset, delete_preset,
+    get_default_preset, set_default_preset, clear_default_preset
 )
+from .models import PresetResponse, PresetRequest
 
 from api.progress import manager
 from api.models import (
@@ -34,6 +37,43 @@ from api.models import (
 )
 
 router = APIRouter()
+
+# Health (single definition)
+@router.get("/health")
+def health():
+    return JSONResponse({"status": "ok"})
+
+# --- Default preset endpoints (MUST be above /presets/{name}) ---
+@router.get("/presets/default", response_model=PresetResponse)
+def presets_get_default():
+    try:
+        return PresetResponse(success=True, default=get_default_preset())
+    except Exception as e:
+        return PresetResponse(success=False, error=str(e))
+
+@router.post("/presets/default", response_model=PresetResponse)
+async def presets_set_default(req: Request):
+    try:
+        body = await req.json()
+        name = (body or {}).get("name")
+        if not name:
+            raise HTTPException(status_code=400, detail="Missing name")
+        set_default_preset(name)
+        names = sorted(list(list_presets().keys()))
+        return PresetResponse(success=True, default=name, presets=names)
+    except HTTPException:
+        raise
+    except Exception as e:
+        return PresetResponse(success=False, error=str(e))
+
+@router.delete("/presets/default", response_model=PresetResponse)
+def presets_clear_default():
+    try:
+        clear_default_preset()
+        names = sorted(list(list_presets().keys()))
+        return PresetResponse(success=True, default=None, presets=names)
+    except Exception as e:
+        return PresetResponse(success=False, error=str(e))
 
 
 # Load default excluded folders from backend/excluded_folders.json (if present)
@@ -81,13 +121,13 @@ async def stream_progress(pid: str):
 
 
 # Helper to confine results to the selected root and skip links
-def _confine_to_root(paths: list[str], root: str) -> list[str]:
+def _confine_to_root(paths: list[str], root: str, skip_symlinks: bool = True) -> list[str]:
     root_real = os.path.realpath(root)
     prefix = root_real + os.sep
     safe: list[str] = []
     for p in paths:
         try:
-            if os.path.islink(p):  # skip symlinks entirely
+            if skip_symlinks and os.path.islink(p):
                 continue
             rp = os.path.realpath(p)
             if rp.startswith(prefix):
@@ -95,6 +135,38 @@ def _confine_to_root(paths: list[str], root: str) -> list[str]:
         except Exception:
             continue
     return safe
+
+
+def _load_gitignore_patterns(root: str) -> list[str]:
+    gi = os.path.join(root, ".gitignore")
+    patterns: list[str] = []
+    try:
+        if os.path.exists(gi):
+            with open(gi, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    patterns.append(s)
+    except Exception:
+        pass
+    return patterns
+
+
+def _apply_gitignore(root: str, paths: list[str]) -> list[str]:
+    pats = _load_gitignore_patterns(root)
+    if not pats:
+        return paths
+    kept: list[str] = []
+    for p in paths:
+        try:
+            rel = os.path.relpath(p, root)
+            if any(fnmatch.fnmatch(rel, pat) for pat in pats):
+                continue
+            kept.append(p)
+        except Exception:
+            kept.append(p)
+    return kept
 
 
 @router.post("/scan", response_model=ScanResponse)
@@ -124,7 +196,16 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 request.time_filter,
                 request.selected_types,  # extension/semantic gating if provided
                 deep_scan=False,
-                deep_scan_term=None
+                deep_scan_term=None,
+                follow_symlinks=request.follow_symlinks,
+                include_hidden=request.include_hidden,
+                max_depth=request.max_depth,
+                name_glob_include=request.name_glob_include,
+                name_glob_exclude=request.name_glob_exclude,
+                name_regex_include=request.name_regex_include,
+                name_regex_exclude=request.name_regex_exclude,
+                time_attribute=request.time_attribute,
+                deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
             )
             prelim_paths = [p for p, _ in prelim]
 
@@ -138,14 +219,16 @@ async def scan_files(request: ScanRequest, http_req: Request):
             # Hidden/system/excluded folders (+ backend defaults)
             prelim_paths = filter_hidden_files(
                 prelim_paths,
-                exclude_dotfiles=True,
+                exclude_dotfiles=not request.include_hidden,
                 exclude_system=True,
-                exclude_hidden_dirs=True,
+                exclude_hidden_dirs=not request.include_hidden,
                 exclude_folders=True,
                 excluded_folder_names=set(request.excluded_folders or []) | DEFAULT_EXCLUDED_FOLDERS,
             )
-            prelim_paths = [p for p in prelim_paths if not os.path.islink(p) and os.path.isfile(p)]
-            prelim_paths = _confine_to_root(prelim_paths, request.folder)  # confine
+            if request.respect_gitignore:
+                prelim_paths = _apply_gitignore(request.folder, prelim_paths)
+            prelim_paths = [p for p in prelim_paths if (request.follow_symlinks or not os.path.islink(p)) and os.path.isfile(p)]
+            prelim_paths = _confine_to_root(prelim_paths, request.folder, skip_symlinks=not request.follow_symlinks)
             total_files = len(prelim_paths)
             total_bytes = 0
             for p in prelim_paths:
@@ -180,15 +263,24 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 loop.create_task(manager.advance(progress_id, bytes_inc))
 
         raw_files = filter_files(
-            request.folder,
-            request.size_filter,
-            request.time_filter,
-            request.selected_types,
-            deep_scan=request.deep_scan,
-            deep_scan_term=request.deep_scan_terms,
-            deep_scan_mode=request.deep_scan_mode,
-            progress_callback=progress_cb
-        )
+             request.folder,
+             request.size_filter,
+             request.time_filter,
+             request.selected_types,
+             deep_scan=request.deep_scan,
+             deep_scan_term=request.deep_scan_terms,
+             deep_scan_mode=request.deep_scan_mode,
+             progress_callback=progress_cb,
+             follow_symlinks=request.follow_symlinks,
+             include_hidden=request.include_hidden,
+             max_depth=request.max_depth,
+             name_glob_include=request.name_glob_include,
+             name_glob_exclude=request.name_glob_exclude,
+             name_regex_include=request.name_regex_include,
+             name_regex_exclude=request.name_regex_exclude,
+             time_attribute=request.time_attribute,
+             deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
+         )
 
         # Step 2: Apply extension filters
         filtered_paths = filter_by_extension(
@@ -200,19 +292,34 @@ async def scan_files(request: ScanRequest, http_req: Request):
         # Step 3: Remove hidden/system files and excluded folders (+ backend defaults)
         filtered_paths = filter_hidden_files(
             filtered_paths,
-            exclude_dotfiles=True,
+            exclude_dotfiles=not request.include_hidden,
             exclude_system=True,
-            exclude_hidden_dirs=True,
+            exclude_hidden_dirs=not request.include_hidden,
             exclude_folders=True,
             excluded_folder_names=set(request.excluded_folders or []) | DEFAULT_EXCLUDED_FOLDERS,
         )
+        if request.respect_gitignore:
+            filtered_paths = _apply_gitignore(request.folder, filtered_paths)
 
         # Skip symlinks/non-regular files and confine to root
-        filtered_paths = [p for p in filtered_paths if not os.path.islink(p) and os.path.isfile(p)]
-        filtered_paths = _confine_to_root(filtered_paths, request.folder)
+        filtered_paths = [p for p in filtered_paths if (request.follow_symlinks or not os.path.islink(p)) and os.path.isfile(p)]
+        filtered_paths = _confine_to_root(filtered_paths, request.folder, skip_symlinks=not request.follow_symlinks)
 
         # Step 4: Map semantic types back to filtered paths
-        semantic_map = {path: sem for path, sem in raw_files}
+        # Maps from filter (path -> (semantic_type, tags))
+        semantic_map = {p: s for (p, s, _tags) in raw_files}
+        tags_map = {p: list(_tags or []) for (p, _s, _tags) in raw_files}
+
+        # Add 'Extension' reason when include_exts was provided
+        include_exts_norm = {(e or "").lower() for e in (request.include_exts or [])}
+        if include_exts_norm:
+            for p in filtered_paths:
+                try:
+                    ext = os.path.splitext(p)[1].lower()
+                    if ext in include_exts_norm:
+                        tags_map.setdefault(p, []).append("Extension")
+                except Exception:
+                    pass
 
         # Step 5: Build file results with metadata
         file_results = []
@@ -224,9 +331,11 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 modified = format_timestamp(os.path.getmtime(path))
                 created = format_timestamp(os.path.getctime(path))
                 sem = semantic_map.get(path)
+                tags = tags_map.get(path, [])
                 file_results.append(FileResult(
                     path=path, name=name, size=size, size_formatted=size_fmt,
-                    modified=modified, created=created, semantic_type=sem
+                    modified=modified, created=created, semantic_type=sem or "Unclassified",
+                    search_tags=tags
                 ))
             except Exception:
                 continue
@@ -366,44 +475,23 @@ async def copy_files(request: CopyRequest):
 
 @router.post("/presets/save", response_model=PresetResponse)
 async def save_filter_preset(request: PresetRequest):
-    """
-    Save a filter configuration as a preset for later reuse.
-    """
     try:
         save_preset(request.name, request.config)
-        
-        return PresetResponse(
-            success=True,
-            presets=list_presets()
-        )
-
+        names = sorted(list(list_presets().keys()))
+        return PresetResponse(success=True, presets=names)
     except Exception as e:
-        return PresetResponse(
-            success=False,
-            error=str(e)
-        )
-
+        return PresetResponse(success=False, error=str(e))
 
 @router.get("/presets/list", response_model=PresetResponse)
 async def list_filter_presets():
-    """
-    Get a list of all saved filter presets.
-    """
     try:
-        presets = list_presets()
-        
-        return PresetResponse(
-            success=True,
-            presets=presets
-        )
-
+        names = sorted(list(list_presets().keys()))
+        return PresetResponse(success=True, presets=names)
     except Exception as e:
-        return PresetResponse(
-            success=False,
-            error=str(e)
-        )
+        return PresetResponse(success=False, error=str(e))
 
 
+# keep these BELOW the block above
 @router.get("/presets/{name}", response_model=PresetResponse)
 async def load_filter_preset(name: str):
     """
@@ -431,27 +519,10 @@ async def load_filter_preset(name: str):
 
 @router.delete("/presets/{name}", response_model=PresetResponse)
 async def delete_filter_preset(name: str):
-    """
-    Delete a saved filter preset.
-    """
     try:
         delete_preset(name)
-        
-        return PresetResponse(
-            success=True,
-            presets=list_presets()
-        )
-
+        names = sorted(list(list_presets().keys()))
+        return PresetResponse(success=True, presets=names)
     except Exception as e:
-        return PresetResponse(
-            success=False,
-            error=str(e)
-        )
+        return PresetResponse(success=False, error=str(e))
 
-
-@router.get("/health")
-async def health_check():
-    """
-    Simple health check endpoint to verify the API is running.
-    """
-    return {"status": "healthy", "message": "File Filter Copier API is running"}

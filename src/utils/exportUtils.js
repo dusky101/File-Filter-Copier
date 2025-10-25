@@ -51,7 +51,10 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
     files.forEach(file => {
       const type = file.semantic_type || 'Unclassified';
       const label = getFileLabelFromName(file.name || file.path);
-      output += `${file.name}  ←  ${file.path}  [Type: ${type} | Label: ${label}`;
+      const searchType = (Array.isArray(file.search_tags) && file.search_tags.length)
+        ? file.search_tags.join(', ')
+        : (file.semantic_type || 'Unclassified');
+      output += `${file.name}  ←  ${file.path}  [Search: ${searchType} | Type: ${type} | Label: ${label}`;
       if (includeMetadata) {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
@@ -100,10 +103,13 @@ export const exportAsCSV = (files, options = {}) => {
   csv += '\n';
 
   files.forEach(file => {
+    const searchType = (Array.isArray(file.search_tags) && file.search_tags.length)
+      ? file.search_tags.join(', ')
+      : (file.semantic_type || 'Unclassified');
     const row = [
       escapeCSV(file.name),
       escapeCSV(file.path),
-      escapeCSV(file.semantic_type || 'Unclassified'),
+      escapeCSV(searchType),
       escapeCSV(getFileLabelFromName(file.name || file.path)),
     ];
 
@@ -139,6 +145,7 @@ export const exportAsJSON = (files, duplicates = {}, options = {}) => {
       name: f.name,
       path: f.path,
       type: f.semantic_type || 'Unclassified',
+      search_tags: Array.isArray(f.search_tags) ? f.search_tags : [],
       label: getFileLabelFromName(f.name || f.path)
     })),
     duplicates: Object.keys(duplicates).length > 0 ? duplicates : undefined
@@ -193,7 +200,10 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
     files.forEach(file => {
       const type = file.semantic_type || 'Unclassified';
       const label = getFileLabelFromName(file.name || file.path);
-      md += `- \`${file.name}\` ← \`${file.path}\` [Type: ${type} | Label: ${label}`;
+      const searchType = (Array.isArray(file.search_tags) && file.search_tags.length)
+        ? file.search_tags.join(', ')
+        : (file.semantic_type || 'Unclassified');
+      md += `- \`${file.name}\` ← \`${file.path}\` [Search: ${searchType} | Type: ${type} | Label: ${label}`;
       if (includeMetadata) {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
@@ -268,6 +278,7 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
     <thead>
       <tr>
         <th>Name</th>
+        <th>Search</th>
         <th>Type</th>
         <th>Label</th>
         ${includeMetadata ? `<th>Size</th><th>Modified</th><th>Created</th><th>Path</th>` : ``}
@@ -278,9 +289,13 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
     list.forEach(file => {
       const type = file.semantic_type || 'Unclassified';
       const label = getFileLabelFromName(file.name || file.path);
+      const searchType = (Array.isArray(file.search_tags) && file.search_tags.length)
+        ? file.search_tags.join(', ')
+        : (file.semantic_type || 'Unclassified');
       t += `
       <tr>
         <td>${escapeHTML(file.name)}</td>
+        <td>${escapeHTML(searchType)}</td>
         <td>${escapeHTML(type)}</td>
         <td>${escapeHTML(label)}</td>
         ${includeMetadata ? `

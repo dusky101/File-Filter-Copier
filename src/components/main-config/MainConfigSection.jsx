@@ -25,7 +25,18 @@ const MainConfigSection = ({ onOpenPresetManager }) => {
     addRecentDestinationFolder,
     theme,
     defaultPresetName,
+    activePresetName,
+    refreshDefaultPresetName,
   } = useSettingsStore();
+
+  const BLANK_DEFAULTS = ["WWWDefault", "Default", "Blank"];
+  const showDefaultChip =
+    !!defaultPresetName && !BLANK_DEFAULTS.includes(defaultPresetName);
+
+  useEffect(() => {
+    // Ensure UI reflects backend default after app restart or after clearing default
+    refreshDefaultPresetName?.();
+  }, [refreshDefaultPresetName]);
 
   // Apply theme to <html> (document.documentElement)
   useEffect(() => {
@@ -95,14 +106,25 @@ const MainConfigSection = ({ onOpenPresetManager }) => {
 
   return (
     <>
-      {/* Load Preset button (moved here above the Configuration section) */}
-      <div className="mb-4 flex justify-start">
+      {/* Load Preset button and current preset status */}
+      <div className="mb-4 flex items-center gap-3">
         <button
           onClick={onOpenPresetManager}
           className={`px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 ${animationsEnabled ? "transition-all hover:scale-105" : ""}`}
         >
-          Load Preset{defaultPresetName ? ` (${defaultPresetName})` : ""}
+          Load Preset
         </button>
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          Active preset:{" "}
+          <span className="font-medium">{activePresetName || "None"}</span>
+        </div>
+        {showDefaultChip && (
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200">
+              Default: {defaultPresetName}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-6 mb-6 border border-slate-200 dark:border-slate-700">

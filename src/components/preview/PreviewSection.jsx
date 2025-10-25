@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   FileText,
   Download,
@@ -15,12 +15,14 @@ import {
   X,
   Copy,
   CheckCircle2,
+  Filter, // + add filter icon
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
 import { formatFileSize } from "../../services/api";
 import { exportPreview } from "../../utils/exportUtils";
+import PreviewSectionTable from "./PreviewSectionTable";
 
 /**
  * PreviewSection Component
@@ -77,13 +79,69 @@ const PreviewSection = ({ onOpenSettings }) => {
   // Safety check: ensure filteredFiles is an array (must be before early return)
   const safeFilteredFiles = Array.isArray(filteredFiles) ? filteredFiles : [];
 
+  // Helper: consistent extension extraction (upper for display, lower for logic)
+  const getExtLower = (f) => {
+    if (!f?.name) return "";
+    const i = f.name.lastIndexOf(".");
+    return i > 0 ? f.name.slice(i + 1).toLowerCase() : "";
+  };
+  const getExtUpper = (f) => getExtLower(f).toUpperCase();
+
+  // Extension filter UI state (Excel-like for the header)
+  const [extFilterOpen, setExtFilterOpen] = useState(false);
+  const [extFilterQuery, setExtFilterQuery] = useState("");
+  // Selected extensions + "all selected" flag
+  const [extSelected, setExtSelected] = useState(() => new Set());
+  const [extAll, setExtAll] = useState(true); // NEW: true = all ticks shown
+  const extPopoverRef = useRef(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (!extFilterOpen) return;
+      if (extPopoverRef.current && !extPopoverRef.current.contains(e.target)) {
+        setExtFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [extFilterOpen]);
+
+  // All extensions present in current result set (pre-filter)
+  const allExtensions = useMemo(() => {
+    const s = new Set();
+    for (const f of safeFilteredFiles) {
+      const ext = getExtUpper(f);
+      if (ext) s.add(ext);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b));
+  }, [safeFilteredFiles]);
+
+  // Keep selection in sync with available options
+  useEffect(() => {
+    if (extAll) {
+      setExtSelected(new Set(allExtensions));
+    } else {
+      setExtSelected(
+        (prev) => new Set([...prev].filter((e) => allExtensions.includes(e)))
+      );
+    }
+  }, [allExtensions, extAll]);
+
+  const filteredExtOptions = useMemo(() => {
+    const q = extFilterQuery.trim().toLowerCase();
+    if (!q) return allExtensions;
+    return allExtensions.filter((e) => e.toLowerCase().includes(q));
+  }, [extFilterQuery, allExtensions]);
+
+  const extFilterIsActive = !extAll;
+
   /**
-   * Filter and sort files based on search and sort criteria
+   * Filter and sort files based on search, extension filter and sort criteria
    */
   const processedFiles = useMemo(() => {
     let result = [...safeFilteredFiles];
 
-    // Apply search filter
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       result = result.filter(
@@ -91,6 +149,15 @@ const PreviewSection = ({ onOpenSettings }) => {
           file.name.toLowerCase().includes(term) ||
           file.path.toLowerCase().includes(term)
       );
+    }
+
+    // Apply extension filter
+    if (!extAll) {
+      if (extSelected.size === 0) {
+        result = [];
+      } else {
+        result = result.filter((f) => extSelected.has(getExtUpper(f)));
+      }
     }
 
     // Apply sorting
@@ -114,9 +181,19 @@ const PreviewSection = ({ onOpenSettings }) => {
           compareA = a.created;
           compareB = b.created;
           break;
-        case "type":
-          compareA = a.name.split(".").pop().toLowerCase();
-          compareB = b.name.split(".").pop().toLowerCase();
+        case "type": // legacy alias, keep for safety
+        case "ext": // fix: allow sorting by the Extension column key
+          compareA = getExtLower(a);
+          compareB = getExtLower(b);
+          break;
+        case "searchType":
+          const st = (f) =>
+            (Array.isArray(f.search_tags) && f.search_tags.length
+              ? f.search_tags.join(", ")
+              : f.semantic_type || "Unclassified"
+            ).toLowerCase();
+          compareA = st(a);
+          compareB = st(b);
           break;
         default:
           compareA = a.name.toLowerCase();
@@ -129,7 +206,7 @@ const PreviewSection = ({ onOpenSettings }) => {
     });
 
     return result;
-  }, [safeFilteredFiles, searchTerm, sortBy, sortOrder]);
+  }, [safeFilteredFiles, searchTerm, sortBy, sortOrder, extSelected, extAll]);
 
   // Pagination
   const totalPages = Math.ceil(processedFiles.length / itemsPerPage);
@@ -185,6 +262,13 @@ const PreviewSection = ({ onOpenSettings }) => {
     );
   };
 
+  const searchTypeFor = (f) => {
+    if (Array.isArray(f.search_tags) && f.search_tags.length) {
+      return f.search_tags.join(", ");
+    }
+    return f.semantic_type || "Unclassified";
+  };
+
   if (safeFilteredFiles.length === 0) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 p-12 text-center">
@@ -228,17 +312,25 @@ const PreviewSection = ({ onOpenSettings }) => {
             <>
               {/* Metadata status badge - click to open settings */}
               <button
-                onClick={onOpenSettings}
+                onClick={() => toggleMetadataInExport()} // click toggles ON/OFF
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onOpenSettings
+                    ? onOpenSettings()
+                    : window.dispatchEvent(new CustomEvent("open-settings"));
+                }}
+                onMouseDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && onOpenSettings) {
+                    e.preventDefault();
+                    onOpenSettings(); // Cmd/Ctrl+Click opens Settings
+                  }
+                }}
                 className={`
                   flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                  ${
-                    includeMetadataInExport
-                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600"
-                  }
+                  ${includeMetadataInExport ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600"}
                   hover:shadow-sm transition-all cursor-pointer
                 `}
-                title="Click to change export settings"
+                title="Click to toggle metadata. Right‑click or Cmd/Ctrl+Click to open Settings."
               >
                 <Settings2 className="w-3.5 h-3.5" />
                 {includeMetadataInExport ? "Metadata: On" : "Metadata: Off"}
@@ -316,133 +408,188 @@ const PreviewSection = ({ onOpenSettings }) => {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-slate-50 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-700">
-            <tr>
-              <th
-                onClick={() => handleSort("name")}
-                className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <div className="flex items-center gap-2">
-                  Name
-                  <SortIcon column="name" />
-                </div>
-              </th>
-
-              {showFileSize && (
-                <th
-                  onClick={() => handleSort("size")}
-                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <div className="flex items-center gap-2">
-                    Size
-                    <SortIcon column="size" />
-                  </div>
-                </th>
-              )}
-
-              {showModifiedDate && (
-                <th
-                  onClick={() => handleSort("modified")}
-                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <div className="flex items-center gap-2">
-                    Modified
-                    <SortIcon column="modified" />
-                  </div>
-                </th>
-              )}
-
-              {showCreatedDate && (
-                <th
-                  onClick={() => handleSort("created")}
-                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <div className="flex items-center gap-2">
-                    Created
-                    <SortIcon column="created" />
-                  </div>
-                </th>
-              )}
-
-              {showFileType && (
-                <th
-                  onClick={() => handleSort("type")}
-                  className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <div className="flex items-center gap-2">
-                    Semantic Type
-                    <SortIcon column="type" />
-                  </div>
-                </th>
-              )}
-
-              {showFileType && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Extension
-                </th>
-              )}
-
-              {showFullPath && (
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Path
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-            {paginatedFiles.map((file, index) => (
-              <tr
-                key={index}
-                className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-              >
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-900 dark:text-white">
-                  {file.name}
-                </td>
-
-                {showFileSize && (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                    {formatFileSize(file.size)}
-                  </td>
-                )}
-
-                {showModifiedDate && (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                    {file.modified}
-                  </td>
-                )}
-
-                {showCreatedDate && (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400">
-                    {file.created}
-                  </td>
-                )}
-
-                {showFileType && (
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
-                      {file.semantic_type || "Unclassified"}
+      <PreviewSectionTable
+        files={paginatedFiles}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSort={handleSort}
+        columns={[
+          { key: "name", label: "Name", getValue: (f) => f.name },
+          {
+            key: "searchType",
+            label: "Search Type",
+            getValue: (f) => searchTypeFor(f),
+            renderCell: (f) =>
+              Array.isArray(f.search_tags) && f.search_tags.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {f.search_tags.map((t, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200"
+                    >
+                      {t}
                     </span>
-                  </td>
-                )}
-
-                {showFileType && (
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 uppercase">
-                    {file.name.split(".").pop()}
-                  </td>
-                )}
-
-                {showFullPath && (
-                  <td className="px-6 py-4 font-mono text-xs text-slate-600 dark:text-slate-400">
-                    {file.path}
-                  </td>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  ))}
+                </div>
+              ) : (
+                <span className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  {searchTypeFor(f)}
+                </span>
+              ),
+          },
+          ...(showFileSize
+            ? [
+                {
+                  key: "size",
+                  label: "Size",
+                  getValue: (f) => f.size_formatted || "",
+                },
+              ]
+            : []),
+          ...(showModifiedDate
+            ? [
+                {
+                  key: "modified",
+                  label: "Modified",
+                  getValue: (f) => f.modified || "",
+                },
+              ]
+            : []),
+          ...(showCreatedDate
+            ? [
+                {
+                  key: "created",
+                  label: "Created",
+                  getValue: (f) => f.created || "",
+                },
+              ]
+            : []),
+          ...(showFileType
+            ? [
+                {
+                  key: "ext",
+                  label: "Extension",
+                  getValue: (f) => getExtUpper(f),
+                  // Header extra: Excel-like filter control
+                  headerExtra: () => (
+                    <span className="ml-1 inline-flex items-center">
+                      <button
+                        title="Filter by extension"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExtFilterOpen((v) => !v);
+                        }}
+                        className={`p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 ${extFilterIsActive ? "text-blue-600" : "text-slate-500"}`}
+                      >
+                        <Filter className="w-3.5 h-3.5" />
+                      </button>
+                      {extFilterOpen && (
+                        <div
+                          ref={extPopoverRef}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-full right-6 mt-2 z-50 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-3"
+                        >
+                          <div className="text-xs font-semibold mb-2">
+                            Filter: Extension
+                          </div>
+                          <div className="mb-2">
+                            <input
+                              value={extFilterQuery}
+                              onChange={(e) =>
+                                setExtFilterQuery(e.target.value)
+                              }
+                              placeholder="Search extensions..."
+                              className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                            />
+                          </div>
+                          <div className="max-h-56 overflow-auto pr-1">
+                            <label className="flex items-center gap-2 py-1 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={extAll}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setExtAll(checked);
+                                  setExtSelected(
+                                    checked ? new Set(allExtensions) : new Set()
+                                  );
+                                }}
+                              />
+                              <span>(Show All)</span>
+                            </label>
+                            {filteredExtOptions.map((ext) => {
+                              const checked = extAll
+                                ? true
+                                : extSelected.has(ext);
+                              return (
+                                <label
+                                  key={ext}
+                                  className="flex items-center gap-2 py-1 text-sm"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      setExtSelected((prev) => {
+                                        const next = extAll
+                                          ? new Set(allExtensions)
+                                          : new Set(prev);
+                                        if (e.target.checked) next.add(ext);
+                                        else next.delete(ext);
+                                        const allOn =
+                                          next.size >= allExtensions.length;
+                                        setExtAll(allOn);
+                                        return allOn
+                                          ? new Set(allExtensions)
+                                          : next;
+                                      });
+                                    }}
+                                  />
+                                  <span>{ext}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between">
+                            <div className="flex gap-2">
+                              <button
+                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600"
+                                onClick={() => {
+                                  setExtAll(true);
+                                  setExtSelected(new Set(allExtensions));
+                                }}
+                              >
+                                Select All
+                              </button>
+                              <button
+                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600"
+                                onClick={() => {
+                                  setExtAll(false);
+                                  setExtSelected(new Set());
+                                }}
+                              >
+                                Clear
+                              </button>
+                            </div>
+                            <button
+                              className="text-xs px-3 py-1 rounded bg-blue-600 text-white"
+                              onClick={() => setExtFilterOpen(false)}
+                            >
+                              Close
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </span>
+                  ),
+                },
+              ]
+            : []),
+          ...(showFullPath
+            ? [{ key: "path", label: "Path", getValue: (f) => f.path }]
+            : []),
+        ]}
+      />
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -506,7 +653,8 @@ const PreviewSection = ({ onOpenSettings }) => {
                 >
                   <div className="flex items-center justify-between px-4 py-4 bg-slate-50 dark:bg-slate-800/60">
                     <div className="text-sm font-medium text-slate-900 dark:text-white">
-                      {name} <span className="text-slate-500">({paths.length})</span>
+                      {name}{" "}
+                      <span className="text-slate-500">({paths.length})</span>
                     </div>
                     <button
                       onClick={() => copyPaths(paths)}
@@ -518,7 +666,10 @@ const PreviewSection = ({ onOpenSettings }) => {
                   </div>
                   <ul className="px-4 py-3 space-y-1">
                     {paths.map((p, i) => (
-                      <li key={i} className="font-mono text-[11px] text-slate-700 dark:text-slate-300 break-all">
+                      <li
+                        key={i}
+                        className="font-mono text-[11px] text-slate-700 dark:text-slate-300 break-all"
+                      >
                         {p}
                       </li>
                     ))}

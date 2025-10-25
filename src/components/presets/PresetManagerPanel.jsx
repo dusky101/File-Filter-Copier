@@ -4,6 +4,9 @@ import {
   listPresets,
   loadPreset as apiLoadPreset,
   deletePreset as apiDeletePreset,
+  setDefaultPreset,
+  getDefaultPreset,
+  clearDefaultPreset,
 } from "../../services/api";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
@@ -16,10 +19,13 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
 
   const { loadPresetConfig } = useFilterStore();
   const {
-    defaultPresetName,
     setDefaultPresetName,
-    getNextOutputNameForPreset,
+    setActivePresetName,
+    defaultPresetName,
+    getNextOutputNameForPreset, // <-- add this
   } = useSettingsStore();
+
+  const resetToBlank = useFilterStore((s) => s.resetToBlank);
 
   const refresh = async () => {
     setLoading(true);
@@ -27,12 +33,14 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
     try {
       const res = await listPresets();
       if (res.success) {
-        const data = res.data;
-        const names = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.presets)
-            ? data.presets
-            : Object.keys(data || {});
+        const srv = res.data || {};
+        // Prefer array of names
+        let names = Array.isArray(srv.presets) ? srv.presets : [];
+        // Back-compat: if presets was sent as an object map, use its keys
+        if (!names.length && srv.presets && typeof srv.presets === "object") {
+          names = Object.keys(srv.presets);
+        }
+        names.sort((a, b) => a.localeCompare(b));
         setPresets(names);
         if (!selected && names.length) setSelected(names[0]);
       } else {
@@ -105,8 +113,10 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
       const res = await apiDeletePreset(selected);
       if (res.success) {
         await refresh();
-        if (defaultPresetName === selected) setDefaultPresetName("");
-      } else setError(res.error || "Failed to delete preset");
+        if (defaultPresetName === selected) setDefaultPresetName(null);
+      } else {
+        setError(res.error || "Failed to delete preset");
+      }
     } catch (e) {
       setError(e.message || "Failed to delete preset");
     } finally {
@@ -121,6 +131,88 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
       `✅ Default preset set to \"${selected}\". It will auto-load on startup.`
     );
   };
+
+  // After successful load
+  const handleLoad = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiLoadPreset(selected);
+      if (res.success) {
+        const config = { ...(res.data?.config || res.data) }; // support both shapes
+        // Normalize source/destination/output
+        const src =
+          config.folder || config.sourceFolder || config.source_folder;
+        const dest =
+          config.destination ||
+          config.destinationFolder ||
+          config.destination_folder;
+        const outName =
+          config.output_folder_name || config.outputFolderName || "Output";
+        // Compute next output folder name for this preset
+        const nextOut = getNextOutputNameForPreset(selected, outName);
+        config.folder = src || "";
+        config.destination = dest || "";
+        config.output_folder_name = nextOut;
+        loadPresetConfig(config);
+        setActivePresetName(selected || null);
+        onClose?.();
+        alert(
+          `✅ Loaded preset \"${selected}\"\nOutput folder set to: ${nextOut}`
+        );
+      } else setError(res.error || "Failed to load preset");
+    } catch (e) {
+      setError(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Make Default
+  const handleMakeDefault = async () => {
+    if (!selected) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await setDefaultPreset(selected);
+      if (res?.success) {
+        const cur = await getDefaultPreset();
+        setDefaultPresetName(cur?.default ?? selected);
+        // keep panel open; optionally toast instead of alert
+      } else {
+        setError(res?.error || "Failed to set default");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Clear Default
+  const handleClearDefault = async () => {
+    setLoading(true);
+    try {
+      await clearDefaultPreset();
+      setDefaultPresetName(null);
+      // optional: also clear the active name if you reset the filters to blank
+      // setActivePresetName(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // On open, fetch default to sync
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await getDefaultPreset();
+        if (alive) setDefaultPresetName(res?.default ?? null);
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [setDefaultPresetName]);
 
   if (!isOpen) return null;
 
@@ -174,11 +266,15 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
                   <Download className="w-5 h-5" />
                 </button>
               </div>
-              {defaultPresetName && (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Default preset: <strong>{defaultPresetName}</strong>
-                </p>
-              )}
+              {/* Default preset label */}
+              <div className="text-sm text-slate-400">
+                Default preset:{" "}
+                {defaultPresetName ? (
+                  <strong>{defaultPresetName}</strong>
+                ) : (
+                  <em>None</em>
+                )}
+              </div>
             </div>
 
             {error && (
@@ -197,18 +293,25 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
             </button>
             <div className="flex items-center gap-2">
               <button
-                onClick={makeDefault}
+                onClick={handleMakeDefault}
                 disabled={!selected || loading}
                 className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 Make Default
               </button>
               <button
-                onClick={loadPreset}
+                onClick={handleLoad}
                 disabled={!selected || loading || presets.length === 0}
                 className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
               >
                 Load
+              </button>
+              <button
+                onClick={handleClearDefault}
+                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-800"
+                title="Clear default preset and revert to blank filters"
+              >
+                Clear Default
               </button>
             </div>
           </div>

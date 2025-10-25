@@ -18,6 +18,7 @@ import useFilterStore from "../../stores/useFilterStore";
 import usePreviewStore from "../../stores/usePreviewStore";
 import { fileTypeGroups } from "../../utils/fileTypes";
 import { listFolders } from "../../services/api";
+import AdvancedFilterHub from "./AdvancedFilterHub";
 
 /**
  * FilterHub
@@ -273,7 +274,7 @@ const FilterHub = ({ open, onClose }) => {
                 onChange={setExcludeDuplicates}
               />
             )}
-            {section === "adv" && <AdvancedSection />}
+            {section === "adv" && <AdvancedFilterHub />}
           </div>
 
           {/* Footer */}
@@ -1090,20 +1091,6 @@ const DuplicatesSection = ({ value, onChange }) => (
     <div className="mt-3 text-xs text-slate-500">
       Note: Detection is by filename only (paths may differ).
     </div>
-  </div>
-);
-
-const AdvancedSection = () => (
-  <div>
-    <SectionTitle
-      title="Advanced"
-      subtitle="Low-frequency options and upcoming enhancements"
-    />
-    <ul className="list-disc ml-6 mt-3 text-sm text-slate-700 dark:text-slate-300">
-      <li>Custom classification rules (coming soon)</li>
-      <li>Performance tuning</li>
-      <li>Export mapping templates</li>
-    </ul>
   </div>
 );
 
