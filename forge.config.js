@@ -22,7 +22,7 @@ module.exports = {
     asar: true,
     icon: packagerIcon,
     extraResource: [
-      path.resolve(__dirname, 'backend', 'dist'),
+      // Only the single-file PyInstaller binary is needed
       path.resolve(__dirname, 'backend', 'dist', 'file-filter-backend'),
     ],
   },
