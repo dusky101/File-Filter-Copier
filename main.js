@@ -11,14 +11,98 @@ const fs = require('fs');
 const http = require('http');
 const { spawn } = require('child_process');
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling
+// Add this function after your other requires and before the isDev declaration
+// Remove the line: const { createApplicationMenu } = require('./menuBar');
+
+function createApplicationMenu(isDev = false) {
+  const { Menu, shell } = require('electron');
+  const isMac = process.platform === 'darwin';
+  
+  const template = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+    {
+      label: 'File',
+      submenu: [isMac ? { role: 'close' } : { role: 'quit' }]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+        ...(isDev ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : [])
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+  console.log(`✅ Application menu created (dev mode: ${isDev})`);
+}
+
+// dev flag works with Vite/Forge globals and NODE_ENV
+const isDev =
+  process.env.NODE_ENV === 'development' ||
+  !!process.env.VITE_DEV_SERVER_URL ||
+  (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== 'undefined' && !!MAIN_WINDOW_VITE_DEV_SERVER_URL);
+
+// Handle creating/removing shortcuts on Windows (Squirrel only)
 if (process.platform === 'win32') {
   try {
-    if (require('electron-squirrel-startup')) {
-      app.quit();
-    }
-  } catch (e) {
-    // Module not found — ignore
+    if (require('electron-squirrel-startup')) app.quit();
+  } catch (_) {
+    // module not present on non-Squirrel runs – ignore
   }
 }
 
@@ -72,40 +156,28 @@ function appIconPath() {
 }
 
 function appNativeIcon() {
-  const icnsPath = appIconPath();
-  let img = null;
-
-  if (icnsPath && icnsPath.endsWith('.icns')) {
-    img = nativeImage.createFromPath(icnsPath);
-    if (img.isEmpty()) {
-      console.warn('⚠️ .icns file is empty, falling back to PNG');
-      const pngFallback = path.join(__dirname, 'src', 'assets', 'icons', 'mac', 'icon.png');
-      if (fs.existsSync(pngFallback)) {
-        img = nativeImage.createFromPath(pngFallback);
-        selectedIconPath = pngFallback;
-      }
-    } else {
-      selectedIconPath = icnsPath;
+  const p = appIconPath();
+  if (!p) return null;
+  try {
+    const img = nativeImage.createFromPath(p);
+    if (img && !img.isEmpty()) {
+      selectedIconPath = p;
+      return img;
     }
-  }
-
-  return img && !img.isEmpty() ? img : null;
+  } catch {}
+  return null;
 }
 
+// Only set Dock icon if .icns is available in dev; never override in production
 function applyMacDockIcon() {
   if (process.platform !== 'darwin') return;
-  const img = appNativeIcon();
-  if (img) {
-    console.log('🧪 Native image size:', img.getSize());
-    try {
-      app.dock.setIcon(img);
-    } catch (err) {
-      console.error('❌ Failed to set dock icon:', err);
-    }
-  } else {
-    console.warn('⚠️ No native image found for dock icon.');
-  }
-  console.log('🖼️  Dock icon:', selectedIconPath || '(not found)');
+  if (app.isPackaged) return; // let macOS use the bundled .icns so sizing looks native
+  const p = appIconPath();
+  if (!p || path.extname(p).toLowerCase() !== '.icns') return; // skip PNGs (they can look oversized)
+  try {
+    const img = nativeImage.createFromPath(p);
+    if (img && !img.isEmpty()) app.dock.setIcon(img);
+  } catch {}
 }
 // ---------- end App Icon resolution ----------
 
@@ -169,9 +241,9 @@ function backendDistBinaryPath() {
 function prodBackendBinaryPath() {
   const exe = process.platform === 'win32' ? 'file-filter-backend.exe' : 'file-filter-backend';
   const candidates = [
-    path.join(process.resourcesPath || '', 'backend', exe),
-    path.join(process.resourcesPath || '', 'dist', exe),
-    path.join(process.resourcesPath || '', exe),
+    path.join(process.resourcesPath || '', 'backend', exe), // if folder copied
+    path.join(process.resourcesPath || '', 'dist', exe),    // if dist folder copied
+    path.join(process.resourcesPath || '', exe),            // preferred (extraResource single file)
   ];
   for (const c of candidates) {
     try { if (fs.existsSync(c)) return c; } catch {}
@@ -351,13 +423,171 @@ async function startBackend() {
   backendProcess.stdout.on('data', (d) => process.stdout.write(`[backend] ${d}`));
   backendProcess.stderr.on('data', (d) => process.stderr.write(`[backend] ${d}`));
   backendProcess.on('exit', (code, signal) => {
-    console.log(`🔚 Backend exited code=${code} signal=${signal}`);
+    console.log(`📚 Backend exited code=${code} signal=${signal}`);
   });
 
   await waitForBackend({ url: 'http://127.0.0.1:8000/api/health' }).catch((e) => {
     console.error('Backend readiness check failed:', e.message);
   });
 }
+
+// ---------- Splash (progress) ----------
+// helper: resolve an asset absolute path (dev or packaged)
+function resolveAssetPath(basename) {
+  const candidates = [
+    path.join(__dirname, 'src', 'assets', basename),   // dev (Vite)
+    path.join(__dirname, 'assets', basename),          // alt dev
+    path.join(process.resourcesPath || '', basename),  // packaged via extraResource
+  ];
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return p; } catch {}
+  }
+  return null;
+}
+// helper to read packaged or dev asset and return data URL
+function readAssetDataUrl(basename) {
+  const p = resolveAssetPath(basename);
+  if (!p) return null;
+  const ext = path.extname(p).slice(1) || 'png';
+  return `data:image/${ext};base64,${fs.readFileSync(p).toString('base64')}`;
+}
+
+// Size splash to the image aspect ratio and a bit larger, then centre it
+function getSplashWindowSize() {
+  const imgPath = resolveAssetPath('splash.png');
+  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
+  // allow up to 80% of the work area
+  const maxW = Math.min(Math.floor(sw * 0.8), 1280);
+  const maxH = Math.min(Math.floor(sh * 0.8), 820);
+
+  if (imgPath) {
+    const ns = nativeImage.createFromPath(imgPath).getSize();
+    const iw = ns.width || 1152, ih = ns.height || 768; // your splash is 1152×768 (3:2)
+    const scale = Math.min(maxW / iw, maxH / ih, 1);
+    const w = Math.round(iw * scale);
+    const h = Math.round(ih * scale);
+    return { width: w, height: h };
+  }
+  // fallback 3:2
+  return { width: 960, height: 640 };
+}
+
+// Replace the createSplashWindow function in your main.js with this version
+
+function createSplashWindow() {
+  const { width, height } = getSplashWindowSize();
+  const splash = new BrowserWindow({
+    width,
+    height,
+    resizable: false,
+    frame: false,
+    alwaysOnTop: true,
+    show: false,
+    backgroundColor: '#0b1220',
+    center: true,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+
+  const bg = readAssetDataUrl('splash.png');  // full-background image
+  const logo = readAssetDataUrl('icon.png');  // centred logo
+
+  const html = `<!doctype html><html><head><meta charset="utf-8" />
+  <style>
+    html,body{margin:0;height:100%;font-family:ui-sans-serif,system-ui,Arial;background:#0b1220;overflow:hidden;}
+    .wrap{
+      position:relative;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      height:100%;
+    }
+    .bg {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      pointer-events: none;
+    }
+    .overlay{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      background-image: radial-gradient(1200px 600px at 20% -20%,rgba(31,42,68,.7) 0%,transparent 60%),
+                        radial-gradient(1000px 500px at 120% 120%,rgba(27,43,74,.7) 0%,transparent 60%);
+    }
+    .content{
+      position:relative;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:32px;
+      /* Fine-tune positioning relative to background */
+      transform: translate(-2%, -8%);
+    }
+    .logo{
+      width:140px;
+      height:140px;
+      border-radius:24px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      object-fit:contain;
+      background:#0e1628;
+    }
+    .title{
+      color:#e5e7eb;
+      font-weight:600;
+      font-size:18px;
+      letter-spacing:.3px;
+      text-shadow:0 1px 2px rgba(0,0,0,.35);
+      margin-top:8px;
+    }
+    .bar{
+      width:280px;
+      height:10px;
+      border-radius:999px;
+      background:rgba(31,41,55,.75);
+      overflow:hidden;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);
+      margin-top:12px;
+    }
+    .fill{
+      height:100%;
+      width:0%;
+      background:linear-gradient(90deg,#3b82f6,#8b5cf6);
+      transition:width .2s ease;
+    }
+    .label{
+      color:#c7d2fe;
+      font-size:13px;
+      text-shadow:0 1px 2px rgba(0,0,0,.35);
+      margin-top:8px;
+    }
+  </style></head><body>
+    <div class="wrap">
+      ${bg ? `<img class="bg" src="${bg}" alt="splash" />` : ''}
+      <div class="overlay"></div>
+      <div class="content">
+        ${logo ? `<img class="logo" src="${logo}" alt="icon" />` : ''}
+        <div class="title">Starting File Filter Copier…</div>
+        <div class="bar"><div id="pfill" class="fill"></div></div>
+        <div id="plabel" class="label">Initialising backend…</div>
+      </div>
+    </div>
+  </body></html>`;
+  splash.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+  splash.once('ready-to-show', () => splash.show());
+  return splash;
+}
+
+function setSplashProgress(win, ratio, label) {
+  const p = Math.max(0, Math.min(1, ratio || 0));
+  // DO NOT call win.setProgressBar() - it affects the Dock icon on macOS
+  const js = `(function(){const f=document.getElementById('pfill');if(f)f.style.width='${Math.round(p*100)}%';
+    const l=document.getElementById('plabel');if(l)l.textContent=${JSON.stringify(label||'')};})();`;
+  try { win.webContents.executeJavaScript(js).catch(()=>{}); } catch {}
+}
+// ---------- end Splash ----------
 
 // ---------- Window / IPC ----------
 const createWindow = () => {
@@ -396,19 +626,15 @@ const createWindow = () => {
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
+    if (isDev) mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    // ensure dock icon is applied in dev too
-    applyMacDockIcon();
-  });
+  return mainWindow;
 };
 
-// Renderer can request the icon (for “files found” popup)
+// Renderer can request the icon (for "files found" popup)
 ipcMain.handle('app:getIconDataUrl', () => {
   const img = appNativeIcon();
   if (!img) return null;
@@ -431,19 +657,54 @@ ipcMain.handle('dialog:openFolder', async () => {
 
 ipcMain.handle('app:getVersion', () => app.getVersion());
 
+// Gate renderer behind backend readiness with splash progress
 app.on('ready', async () => {
+  const splash = createSplashWindow();
+
+  // Animate splash progress while backend starts
+  const started = Date.now();
+  const timeout = 20000;
+  const tick = setInterval(() => {
+    const r = Math.min(0.9, (Date.now() - started) / timeout);
+    setSplashProgress(splash, r, 'Initialising backend…');
+  }, 200);
+
   try {
-    await startBackend();
+    await startBackend(); // waits for /api/health internally
+    clearInterval(tick);
+    setSplashProgress(splash, 1, 'Backend ready');
   } catch (e) {
-    console.error('Failed to start backend:', e);
+    clearInterval(tick);
+    setSplashProgress(splash, 0.95, 'Backend did not start in time');
+    console.error('❌ Failed to start backend:', e);
   }
+
+  // Apply macOS Dock icon once (only in dev if .icns available)
   applyMacDockIcon();
-  createWindow();
+
+    // Create the application menu (hides dev tools in production)
+  createApplicationMenu(isDev);
+
+
+  // Create main window but keep it hidden
+  mainWindow = createWindow();
+
+  // Wait for main window to be ready, then transition smoothly
+  mainWindow.once('ready-to-show', () => {
+    // Brief delay to ensure smooth transition
+    setTimeout(() => {
+      mainWindow.show();
+      splash.close(); // Use close() instead of destroy() for smoother transition
+    }, 100);
+  });
 });
 
+// Recreate window on macOS when dock icon is clicked
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  applyMacDockIcon();
+  if (BrowserWindow.getAllWindows().length === 0) {
+    const win = createWindow();
+    win.once('ready-to-show', () => win.show());
+  }
 });
 
 app.on('window-all-closed', () => {

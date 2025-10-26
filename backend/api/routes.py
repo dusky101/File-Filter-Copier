@@ -38,11 +38,6 @@ from api.models import (
 
 router = APIRouter()
 
-# Health (single definition)
-@router.get("/health")
-def health():
-    return JSONResponse({"status": "ok"})
-
 # --- Default preset endpoints (MUST be above /presets/{name}) ---
 @router.get("/presets/default", response_model=PresetResponse)
 def presets_get_default():
@@ -526,3 +521,7 @@ async def delete_filter_preset(name: str):
     except Exception as e:
         return PresetResponse(success=False, error=str(e))
 
+# Health (single definition)
+@router.get("/health")
+def health():
+    return JSONResponse({"status": "ok"})

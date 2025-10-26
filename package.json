@@ -1,6 +1,6 @@
 {
   "name": "file-filter-copier",
-  "productName": "file-filter-copier",
+  "productName": "File Filter Copier",
   "version": "1.0.0",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",

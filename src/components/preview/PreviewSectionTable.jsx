@@ -46,13 +46,30 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
   const autoFit = (key) => {
     const col = columns.find((c) => c.key === key);
     if (!col) return;
+
     const headerLen = (col.label || "").length;
-    const values = files.slice(0, 300).map((f) => {
+
+    // Sample more rows for better accuracy (500 instead of 300)
+    const sampleSize = Math.min(500, files.length);
+    const values = files.slice(0, sampleSize).map((f) => {
       const v = (col.getValue ? col.getValue(f) : f[col.key]) ?? "";
       return String(v);
     });
+
+    // Find the longest value
     const maxLen = Math.max(headerLen, ...values.map((s) => s.length));
-    const width = Math.min(1000, Math.max(80, Math.round(maxLen * 8.5 + 36)));
+
+    // Better character width estimation:
+    // - Base calculation: 9px per character (increased from 8.5)
+    // - Add extra padding: 48px (increased from 36)
+    // - For very long strings (>100 chars), use slightly smaller multiplier to avoid excessive width
+    const charWidth = maxLen > 100 ? 8.5 : 9;
+    const padding = 48;
+    const calculatedWidth = Math.round(maxLen * charWidth + padding);
+
+    // Clamp between reasonable bounds: 80px min, 1200px max
+    const width = Math.min(1200, Math.max(80, calculatedWidth));
+
     setColWidths((w) => ({ ...w, [key]: width }));
   };
 
@@ -140,13 +157,14 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
                 style={{ width: px(colWidths[c.key]), userSelect: "none" }}
                 className="relative px-4 py-3 text-left text-sm font-semibold tracking-wide text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 cursor-pointer"
               >
-                <span className="inline-flex items-center">
-                  {c.label}
+                {/* FIX: Ensure the span fills the full width of the header cell */}
+                <span className="inline-flex items-center w-full">
+                  <span className="flex-1 truncate">{c.label}</span>
                   {headerSortIcon(c.key)}
                   {/* Optional header control (e.g., filter button) */}
                   {c.headerExtra ? (
                     <span
-                      className="ml-1 inline-flex"
+                      className="ml-1 inline-flex flex-shrink-0"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {typeof c.headerExtra === "function"

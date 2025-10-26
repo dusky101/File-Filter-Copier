@@ -2,28 +2,18 @@ const { FusesPlugin } = require('@electron-forge/plugin-fuses');
 const { FuseV1Options, FuseVersion } = require('@electron/fuses');
 const path = require('path');
 
-// Base icons directory
-const iconsDir = path.resolve(__dirname, 'src', 'assets', 'icons');
-
-// Platform-specific icon resolution
-const packagerIcon = (() => {
-  switch (process.platform) {
-    case 'darwin':
-      return path.join(iconsDir, 'mac', 'icon.icns');
-    case 'win32':
-      return path.join(iconsDir, 'win', 'icon.ico');
-    default:
-      return path.join(iconsDir, 'linux', 'icon.png');
-  }
-})();
-
 module.exports = {
   packagerConfig: {
     asar: true,
-    icon: packagerIcon,
+    // CRITICAL: Path without extension, exactly as per Electron Forge docs
+    icon: path.join(__dirname, 'src', 'assets', 'icons', 'mac', 'icon'),
+    appBundleId: 'com.filefiltercopier.app',
+    appCategoryType: 'public.app-category.productivity',
+    darwinDarkModeSupport: true,
     extraResource: [
-      // Only the single-file PyInstaller binary is needed
-      path.resolve(__dirname, 'backend', 'dist', 'file-filter-backend'),
+      path.join(__dirname, 'backend', 'dist', 'file-filter-backend'),
+      path.join(__dirname, 'src', 'assets', 'splash.png'),
+      path.join(__dirname, 'src', 'assets', 'icon.png'),
     ],
   },
   rebuildConfig: {},
@@ -31,7 +21,8 @@ module.exports = {
     {
       name: '@electron-forge/maker-squirrel',
       config: {
-        setupIcon: path.join(iconsDir, 'win', 'icon.ico'),
+        name: 'file_filter_copier',
+        setupIcon: path.join(__dirname, 'src', 'assets', 'icons', 'win', 'icon.ico'),
       },
     },
     {
@@ -41,14 +32,19 @@ module.exports = {
     {
       name: '@electron-forge/maker-dmg',
       config: {
-        icon: path.join(iconsDir, 'mac', 'icon.icns'),
+        name: 'File Filter Copier',
+        icon: path.join(__dirname, 'src', 'assets', 'icons', 'mac', 'icon.icns'),
+        format: 'ULFO',
       },
     },
     {
       name: '@electron-forge/maker-deb',
       config: {
         options: {
-          icon: path.join(iconsDir, 'linux', 'icon.png'),
+          name: 'file-filter-copier',
+          productName: 'File Filter Copier',
+          icon: path.join(__dirname, 'src', 'assets', 'icons', 'linux', 'icon.png'),
+          categories: ['Utility'],
         },
       },
     },
@@ -56,7 +52,10 @@ module.exports = {
       name: '@electron-forge/maker-rpm',
       config: {
         options: {
-          icon: path.join(iconsDir, 'linux', 'icon.png'),
+          name: 'file-filter-copier',
+          productName: 'File Filter Copier',
+          icon: path.join(__dirname, 'src', 'assets', 'icons', 'linux', 'icon.png'),
+          categories: ['Utility'],
         },
       },
     },
