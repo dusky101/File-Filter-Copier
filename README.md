@@ -21,11 +21,8 @@ Prerequisites
     - source venv/bin/activate  # Windows: venv\Scripts\activate
     - pip install -r requirements.txt
     - python main.py
-    - Visit <http://localhost:8000/docs> to verify APIs
-
 2) Frontend/Electron: run the app
 
-    - In another terminal at repo root:
     - npm install
     - npm run start
     - Electron window will open (Vite dev server powers the renderer)
@@ -40,24 +37,25 @@ Prerequisites
 - Optionally set a destination folder and output folder name
   - Dry Run enabled: preview only (no copy)
   - Dry Run disabled: app will copy matching files to Destination/outputFolderName and write a log file
-- Configure filters (Advanced Filtering button):
-  - Extensions: include and/or exclude lists
-  - Modified Time: preset quick buttons or a custom rule like <10d (last 10 days) or >2h (older than 2 hours)
-  - Size: all, small (<1MB), medium (1–10MB), large (10–100MB), huge (>100MB)
-  - File Types: semantic categories (Documents, Media, Development, Archives) that map to many file extensions
-  - Excluded Folders: common folder names like node_modules, venv, .git, __pycache__
-  - Deep Scan: provide keywords to search inside files; supports Any/All matching and live progress
+  
+  - Configure filters (Filters drawer):
+    - Quick Filters: one-click presets (e.g., Recent <7d, Large Media, Code Only, Docs Only)
+    - Extensions: include and/or exclude lists
+    - Time: preset buttons plus custom rules like <10d (within last 10 days) or >2h (older than 2 hours)
+    - Size: all, small (<1 MB), medium (1–10 MB), large (10–100 MB), huge (>100 MB), or a custom range
+    - File Types: semantic categories (Documents, Media, Development, Archives)
+    - Project Type: semantic roles (Models, Views, Controllers, Services, Utilities, Tests, etc.)
+    - Folder Exclusions: toggle common folders (node_modules, venv, .git, __pycache__, dist, build, etc.) and add your own; includes a browser to pick subfolders from the source path
+    - Deep Scan: provide keywords to search inside files; supports Any/All matching and live progress (SSE)
+    - Advanced: include hidden files, follow symlinks, limit max depth, respect .gitignore, name glob include/exclude (supports *, ?, **), regex include/exclude, and a deep scan max size (skip very large files)
 - Click Run Preview to scan and, if Dry Run is on, see a sortable, searchable table of matching files
-- Click Copy Files (Dry Run off) to copy the same results into the destination/output folder
   - Duplicate filenames are automatically disambiguated (file_1.ext, file_2.ext, ...)
-  - A log file files-with-structure.txt is created with provenance and metadata
 - Presets: save your current configuration and load/delete presets later
 
 ## Architecture Overview
 
 High level
 
-- Electron main process launches a BrowserWindow and exposes a safe preload bridge for folder dialogs
 - React renderer implements the UI, manages state with Zustand, and calls the backend via HTTP (axios)
 - FastAPI backend performs scanning, deep content matching, and copy operations; supports SSE for progress
 
@@ -82,7 +80,6 @@ Data flow (Copy)
 1. Renderer reuses a fresh scan to get file paths
 2. Renderer calls POST /copy with { files, destination, output_folder }
 3. Backend copies files, ensures unique names, writes files-with-structure.txt in output folder
-4. Renderer displays success and output path
 
 ## Frontend (Renderer) Breakdown
 
@@ -104,18 +101,20 @@ Service layer
   - savePreset(name, config), loadPreset(name), listPresets(), deletePreset(name)
   - healthCheck()
   - parseExtensions(), formatFileSize(), formatTimestamp() helpers
+  - listFolders(path) -> GET /folders?path=... (used by Folder Exclusions browser)
 
 State stores (Zustand)
 
 - src/stores/useFilterStore.js
   - Source/destination/output names; dryRun toggle
   - Include/exclude extensions strings
-  - Size/time filters
-  - Selected file types (Set of names like "Images", "Python", etc.)
-  - Excluded folders (Set)
-  - Deep scan flags, terms array, mode any/all (sent as OR/AND to backend)
-  - getFilterConfig() builds the backend ScanRequest payload
-  - Persisted subset (size/time/excluded folders/deep-scan mode)
+  - Size/time filters; size supports presets and custom ranges (e.g., custom:0-5MB)
+  - Selected File Types and Project Types (Sets of names)
+  - Excluded folders (persistent defaults + custom session-only); folder browser to add names
+  - Deep scan flags, terms array, mode any/all, deep scan max size
+  - Advanced options: includeHidden, followSymlinks, maxDepth, timeAttribute (mtime/ctime/atime), respectGitignore, nameGlobInclude/Exclude, nameRegexInclude/Exclude
+  - getFilterConfig() builds the backend ScanRequest payload accordingly
+  - Persisted subset includes size/time/excluded folders/deep-scan mode/selected types and advanced toggles
 - src/stores/usePreviewStore.js
   - Holds results: files[], duplicates{}, pagination, sort, search
   - Selection for export or copy; exportAsText/CSV utilities
@@ -131,10 +130,10 @@ UI components (selected)
 - components/main-config/MainConfigSection.jsx
   - Source/Destination pickers via window.electron.selectFolder()
   - Output folder name and Dry Run toggle
-- components/filters/AdvancedFiltersPanel.jsx
-  - Extensions include/exclude, Time filter (presets + custom), Size buckets
-  - File Types selector driven by src/utils/fileTypes.js groups
-  - Deep Scan: terms list, mode any/all, toggle
+- components/filters/FilterHub.jsx
+  - Central “Filters” drawer with sections: Quick Filters, File Types, Extensions, Project Type, Size, Time, Folder Exclusions, Deep Scan, Duplicates, Advanced
+- components/filters/AdvancedFilterHub.jsx
+  - Advanced controls: include hidden, follow symlinks, max depth, time attribute (mtime/ctime/atime), respect .gitignore, name glob include/exclude, regex include/exclude, deep scan max size
 - components/preview/PreviewSection.jsx
   - Search/sort/pagination; shows duplicates warning; export button
 - components/progress/DeepScanProgressModal.jsx
@@ -168,6 +167,7 @@ Routes and models
     - Optionally estimates totals for SSE (pre-scan pass) and emits progress updates during deep scan
     - Pipeline: core.filter_files -> features.filter_by_extension -> features.filter_hidden_files -> duplicate detection
   - POST /copy -> CopyResponse; validates destination, creates destination/output folder, copies, writes log
+  - GET /folders -> lists immediate subfolders under a given path (used by Folder Exclusions browser)
   - Presets: POST /presets/save, GET /presets/list, GET /presets/{name}, DELETE /presets/{name}
   - GET /health -> backend status
 - backend/api/models.py
@@ -238,13 +238,13 @@ Add a new semantic file type (e.g., "3D Models")
    - Optionally group it in TYPE_GROUPS
 2. frontend: src/utils/fileTypes.js
    - Add new entry in the appropriate group for the selector
-3. UI: AdvancedFiltersPanel shows the new option automatically via fileTypeGroups
+3. UI: FilterHub File Types shows the new option automatically via fileTypeGroups
 
 Add a new filter control (e.g., minimum filename length)
 
 1. Frontend state: src/stores/useFilterStore.js
    - Add state variable and setter; include in getFilterConfig()
-2. UI: src/components/filters/AdvancedFiltersPanel.jsx
+2. UI: src/components/filters/FilterHub.jsx
    - Add the new control bound to the store
 3. Backend models: backend/api/models.py
    - Add field to ScanRequest
@@ -255,7 +255,7 @@ Add a new filter control (e.g., minimum filename length)
 
 Modify size/time presets or semantics
 
-- Update SIZE_FILTERS in backend/core/filters.py and the sizeOptions/timeOptions UI arrays in AdvancedFiltersPanel.jsx
+- Update SIZE_FILTERS in backend/core/filters.py and the Size and Time sections in FilterHub.jsx
 
 Add a copy option (e.g., preserve subfolders)
 
@@ -281,16 +281,27 @@ Base URL: <http://localhost:8000/api>
 - POST /scan
   - Body: ScanRequest
     - folder: string
-    - size_filter: 'all' | 'small' | 'medium' | 'large' | 'huge' | legacy strings ('>1KB', etc.)
-    - time_filter: 'none' | '<1h' | '<24h' | '<7d' | '>30d' | custom '<Nd' or '>Nh'
+  - size_filter: 'all' | 'small' | 'medium' | 'large' | 'huge' | legacy strings ('>1KB', etc.) | custom: `custom:&lt;min&gt;-&lt;max&gt;&lt;UNIT&gt;` (UNIT in KB|MB|GB; e.g., custom:0-5MB, custom:100MB-inf)
+    - time_filter: 'none' | '<1h' | '<24h' | '<7d' | '>30d' | other '<Nh'/'<Nd' values; backend also supports 'w' (weeks) and 'm' (months)
+    - time_attribute: 'mtime' | 'ctime' | 'atime'
     - selected_types: string[]
+    - project_types?: string[]
     - deep_scan: boolean
     - deep_scan_terms: string[]
-    - deep_scan_mode: 'OR' | 'AND'
+    - deep_scan_mode: 'OR' | 'AND' (UI uses 'any'|'all' which maps to OR/AND)
     - include_exts?: string[]
     - exclude_exts?: string[]
     - excluded_folders?: string[]
-  - Headers: x-progress-id optional when deep_scan
+    - follow_symlinks?: boolean
+    - include_hidden?: boolean
+    - max_depth?: number (0 = unlimited)
+    - respect_gitignore?: boolean
+    - name_glob_include?: string[]
+    - name_glob_exclude?: string[]
+    - name_regex_include?: string
+    - name_regex_exclude?: string
+    - deep_scan_max_size_bytes?: number (skip deep scan for files larger than this)
+  - Headers: x-progress-id optional when deep_scan (enables SSE progress)
   - Returns: ScanResponse { success, total_files, files[], duplicates{}, error? }
 
 - POST /copy
@@ -305,7 +316,9 @@ Base URL: <http://localhost:8000/api>
 - POST /progress/start -> { progress_id }
 - GET /progress/{id}/stream -> text/event-stream (SSE)
 
-- GET /health -> { status: 'healthy' }
+- GET /folders?path=/absolute/source/path -> { success, path, folders: string[], count }
+
+- GET /health -> { status: 'ok' }
 
 ## Troubleshooting
 
@@ -348,7 +361,7 @@ Frontend
 - src/App.jsx: app orchestration
 - src/services/api.js: backend API client
 - src/stores/: zustand stores for filters, preview, settings
-- src/components/: MainConfigSection, AdvancedFiltersPanel, PreviewSection, DeepScanProgressModal, layout
+- src/components/: MainConfigSection, FilterHub, AdvancedFilterHub, PreviewSection, DeepScanProgressModal, layout
 - src/utils/: fileTypes.js (selector groups), exportUtils.js (export)
 
 ## Contributing
