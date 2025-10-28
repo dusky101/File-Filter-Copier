@@ -16,6 +16,8 @@ import {
   Binary,
   Save,
   Play,
+  Settings,
+  Tag,
 } from "lucide-react";
 
 /**
@@ -26,6 +28,7 @@ const sections = [
   { id: "start", icon: FolderSearch, label: "Getting started" },
   { id: "quick", icon: Sparkles, label: "Quick Filters" },
   { id: "types", icon: SlidersHorizontal, label: "Filters overview" },
+  { id: "cheatsheet", icon: Filter, label: "Filters cheat sheet" },
   { id: "filetypes", icon: Layers, label: "File Types" },
   { id: "exts", icon: ListFilter, label: "Extensions" },
   { id: "size", icon: Ruler, label: "Size" },
@@ -33,13 +36,15 @@ const sections = [
   { id: "folders", icon: FolderX, label: "Folder exclusions" },
   { id: "deep", icon: ScanSearch, label: "Deep scan" },
   { id: "dups", icon: Binary, label: "Duplicates" },
+  { id: "advanced", icon: Settings, label: "Advanced" },
+  { id: "matchers", icon: Tag, label: "Matchers (Globs/Regex)" },
   { id: "preview", icon: Play, label: "Preview & Copy" },
   { id: "export", icon: FileText, label: "Export" },
   { id: "presets", icon: Save, label: "Presets" },
   { id: "tips", icon: Info, label: "Tips & Troubleshooting" },
 ];
 
-const InstructionsHub = ({ open, onClose }) => {
+const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
   const [active, setActive] = React.useState("start");
   if (!open) return null;
   return (
@@ -79,6 +84,7 @@ const InstructionsHub = ({ open, onClose }) => {
             {active === "start" && <GettingStarted />}
             {active === "quick" && <QuickFiltersHelp />}
             {active === "types" && <FiltersOverview />}
+            {active === "cheatsheet" && <CheatSheet />}
             {active === "filetypes" && <FileTypesHelp />}
             {active === "exts" && <ExtensionsHelp />}
             {active === "size" && <SizeHelp />}
@@ -86,6 +92,10 @@ const InstructionsHub = ({ open, onClose }) => {
             {active === "folders" && <FoldersHelp />}
             {active === "deep" && <DeepScanHelp />}
             {active === "dups" && <DuplicatesHelp />}
+            {active === "advanced" && (
+              <AdvancedHelp openAdvanced={onOpenAdvanced} />
+            )}
+            {active === "matchers" && <MatchersHelp />}
             {active === "preview" && <PreviewCopyHelp />}
             {active === "export" && <ExportHelp />}
             {active === "presets" && <PresetsHelp />}
@@ -157,6 +167,101 @@ const FiltersOverview = () => (
   </div>
 );
 
+const CheatSheet = () => (
+  <div>
+    <SectionTitle
+      title="Filters cheat sheet"
+      subtitle="A quick reference for common filters and examples"
+    />
+    <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300">
+          <tr>
+            <th className="text-left px-4 py-2 font-medium">Filter</th>
+            <th className="text-left px-4 py-2 font-medium">Values</th>
+            <th className="text-left px-4 py-2 font-medium">Examples</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200 dark:divide-slate-700 text-slate-800 dark:text-slate-200">
+          <tr>
+            <td className="px-4 py-2 align-top">File Types</td>
+            <td className="px-4 py-2 align-top">
+              Code, Web, Documents, Media, Scripts…
+            </td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">Code + Web</span>,{" "}
+              <span className="font-mono">Documents only</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Extensions</td>
+            <td className="px-4 py-2 align-top">
+              Include/Exclude comma-separated
+            </td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">.js, .ts</span>; exclude{" "}
+              <span className="font-mono">.map, .tmp</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Size</td>
+            <td className="px-4 py-2 align-top">Presets or custom</td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">custom:0-5MB</span>,{" "}
+              <span className="font-mono">custom:100MB-inf</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Time</td>
+            <td className="px-4 py-2 align-top">Presets or custom</td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">&lt;24h</span>,{" "}
+              <span className="font-mono">&lt;7d</span>,{" "}
+              <span className="font-mono">&gt;30d</span>,{" "}
+              <span className="font-mono">&lt;2w</span>,{" "}
+              <span className="font-mono">&gt;3m</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Folder exclusions</td>
+            <td className="px-4 py-2 align-top">Defaults + custom names</td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">node_modules, dist, build</span>;
+              respect <span className="font-mono">.gitignore</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Deep scan</td>
+            <td className="px-4 py-2 align-top">Any/All terms; max size</td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">api</span>,{" "}
+              <span className="font-mono">token</span>; skip &gt;{" "}
+              <span className="font-mono">50 MB</span>
+            </td>
+          </tr>
+          <tr>
+            <td className="px-4 py-2 align-top">Advanced</td>
+            <td className="px-4 py-2 align-top">
+              Hidden, symlinks, depth, time attr, globs/regex
+            </td>
+            <td className="px-4 py-2 align-top">
+              <span className="font-mono">**/src/**</span>,{" "}
+              <span className="font-mono">*.md</span>,{" "}
+              <span className="font-mono">.*\.(map|tmp)$</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div className="mt-3 text-xs text-slate-500">
+      Globs are simple wildcards (<span className="font-mono">*</span>,{" "}
+      <span className="font-mono">?</span>,{" "}
+      <span className="font-mono">**</span>). Use regex for precise rules;
+      escape dots like <span className="font-mono">\.</span>.
+    </div>
+  </div>
+);
+
 const QuickFiltersHelp = () => (
   <div>
     <SectionTitle
@@ -213,6 +318,7 @@ const SizeHelp = () => (
       items={[
         "Presets: Small (<1 MB), Medium (1–10 MB), Large (10–100 MB), Huge (>100 MB).",
         "Custom format sent to the backend: custom:<min>-<max><UNIT> with KB/MB/GB; leave max empty/0 for no upper limit.",
+        "Examples: custom:0-5MB (0 to 5 MB), custom:100MB-inf (>= 100 MB)",
       ]}
     />
   </div>
@@ -224,6 +330,7 @@ const TimeHelp = () => (
     <List
       items={[
         "Choose presets like <24h, <7d, >30d or build your own (within/earlier than N hours/days).",
+        "Also supported: weeks (w) and months (m), e.g., <2w, >3m.",
         "Note: On macOS, Created can be later than Modified after copying; filters key off Modified.",
       ]}
     />
@@ -241,6 +348,7 @@ const FoldersHelp = () => (
         "Defaults include node_modules, .git, dist, build, etc. Selected defaults are highlighted.",
         "Custom exclusions match any path segment with that name (case-sensitive).",
         "Use Browse source folders to pick nested directory names to exclude.",
+        "If ‘Respect .gitignore’ is enabled under Advanced, files matched by .gitignore at the project root will be hidden as well.",
       ]}
     />
   </div>
@@ -251,9 +359,11 @@ const DeepScanHelp = () => (
     <SectionTitle title="Deep scan" subtitle="Content-based hints (slower)" />
     <List
       items={[
-        "Enable deep scan to search file contents using hint terms.",
+        "Enable deep scan to search file contents using hint terms (one per line).",
         "Modes: Any term (OR) or All terms (AND).",
-        "Performance: Consider combining with File Types or Size/Time to limit scope.",
+        "Deep scan max size: optionally skip scanning files larger than a threshold.",
+        "Live progress: when deep scan runs with a progress channel, you’ll see current file and bytes processed.",
+        "Performance: Combine with File Types/Project Type or Size/Time to keep scans fast.",
       ]}
     />
   </div>
@@ -284,7 +394,7 @@ const PreviewCopyHelp = () => (
         "Use Dry Run to preview without copying.",
         "Run Preview builds results with the current filter configuration.",
         "Copy Files takes the current filtered files and copies them to Destination/OutputFolder.",
-        "Progress appears if a deep search is triggered by terms without deep scan enabled.",
+        "Progress appears for deep scans when a progress channel is active.",
       ]}
     />
   </div>
@@ -312,6 +422,7 @@ const PresetsHelp = () => (
       items={[
         "Use Save Preset to store the current filter configuration.",
         "Loading a preset will populate filters across sections; you can then tweak further.",
+        "Default preset: you can mark a preset as default and load it on startup from the backend presets menu.",
       ]}
     />
   </div>
@@ -327,10 +438,140 @@ const TipsHelp = () => (
       items={[
         "If preview is slow, narrow results via File Types or a Time window.",
         "On macOS, Created date quirks are normal after copying—prefer Modified for recency.",
-        "If the backend isn’t responding, ensure the Python FastAPI server is running (health check runs on app start).",
+        "If the backend isn’t responding, ensure the Python FastAPI server is running (the app performs a health check on start).",
         "Use Exclude duplicates to simplify exports when filenames repeat across folders.",
+        "Globs vs Regex: prefer globs for simple wildcards (e.g., **/dist/**, *.md); use regex for precise rules (e.g., (^|/)src($|/), .*\\.(map|tmp)$).",
+        "Respect .gitignore can hide files you expect—toggle it off under Advanced if you’re missing results.",
       ]}
     />
+    <div className="mt-4">
+      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
+        Why no results?
+      </div>
+      <ul className="list-disc ml-6 space-y-1 text-sm text-slate-700 dark:text-slate-300">
+        <li>
+          Time window is too strict (e.g.,{" "}
+          <span className="font-mono">&lt;24h</span>); widen or clear Time.
+        </li>
+        <li>
+          Include extensions set but don’t match your files; remove Include or
+          add the right ones.
+        </li>
+        <li>
+          Exclude extensions remove everything (e.g.,{" "}
+          <span className="font-mono">.*</span>); clear Exclude.
+        </li>
+        <li>
+          Max depth &gt; 0 stops traversal into subfolders; set to 0 (unlimited)
+          under Advanced.
+        </li>
+        <li>
+          <span className="font-mono">Respect .gitignore</span> hides matched
+          files; toggle it off under Advanced.
+        </li>
+        <li>
+          Hidden files are off; enable “Include hidden” if you need dotfiles.
+        </li>
+        <li>
+          Name globs/regex exclude too broadly; temporarily clear matchers to
+          verify.
+        </li>
+        <li>
+          Folder exclusions match a key directory name you’re targeting; review
+          the exclusions list.
+        </li>
+      </ul>
+    </div>
+  </div>
+);
+
+const AdvancedHelp = ({ openAdvanced }) => (
+  <div>
+    <SectionTitle
+      title="Advanced"
+      subtitle="Traversal, visibility, VCS rules, and name matchers"
+    />
+    <List
+      items={[
+        "Include hidden: include dotfiles and hidden folders in results.",
+        "Follow symlinks: traverse symbolic links during scanning.",
+        "Max depth: limit recursion depth (0 = unlimited).",
+        "Time attribute: choose Modified (mtime), Created (ctime), or Accessed (atime) for time filters.",
+        "Respect .gitignore: apply patterns from the project root .gitignore to hide matches.",
+        "Name Globs (include/exclude): simple wildcards that match filename or full path (supports *, ?, **).",
+        "Regex (include/exclude): advanced patterns applied to filename and full path; anchors ^ and $ match string start/end; use (^|/) for folder boundaries.",
+        "Deep scan max size: skip content scanning for files larger than the specified size.",
+      ]}
+    />
+    {openAdvanced && (
+      <div className="mt-3">
+        <button
+          onClick={openAdvanced}
+          className="text-sm px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          Open Advanced panel
+        </button>
+      </div>
+    )}
+  </div>
+);
+
+const MatchersHelp = () => (
+  <div>
+    <SectionTitle
+      title="Matchers (Globs & Regex)"
+      subtitle="Quick examples for common patterns"
+    />
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="font-medium mb-2">Globs</div>
+        <ul className="list-disc ml-5 space-y-1 text-slate-700 dark:text-slate-300">
+          <li>
+            Include under <span className="font-mono">src</span>:{" "}
+            <span className="font-mono">**/src/**</span>
+          </li>
+          <li>
+            Markdown files: <span className="font-mono">*.md</span>
+          </li>
+          <li>
+            Jest tests: <span className="font-mono">**/*.test.js</span>
+          </li>
+          <li>
+            Exclude build output: <span className="font-mono">**/dist/**</span>
+          </li>
+          <li>
+            Exclude logs: <span className="font-mono">*.log</span>
+          </li>
+        </ul>
+      </div>
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="font-medium mb-2">Regex</div>
+        <ul className="list-disc ml-5 space-y-1 text-slate-700 dark:text-slate-300">
+          <li>
+            Files starting with <span className="font-mono">test-</span>:{" "}
+            <span className="font-mono">(^|/)test-.*\.js$</span>
+          </li>
+          <li>
+            Only under <span className="font-mono">src</span> folder:{" "}
+            <span className="font-mono">(^|/)src($|/)</span>
+          </li>
+          <li>
+            Exclude <span className="font-mono">__snapshots__</span> folders:{" "}
+            <span className="font-mono">(^|/)__snapshots__($|/)</span>
+          </li>
+          <li>
+            Extensions <span className="font-mono">.map</span> or{" "}
+            <span className="font-mono">.tmp</span>:{" "}
+            <span className="font-mono">.*\.(map|tmp)$</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div className="mt-3 text-xs text-slate-500">
+      Regex and glob checks are case-insensitive and apply to both filename and
+      full path. Escape dots in regex with <span className="font-mono">\.</span>
+      .
+    </div>
   </div>
 );
 

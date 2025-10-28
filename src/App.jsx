@@ -33,6 +33,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showFilterHub, setShowFilterHub] = useState(false);
+  const [filterHubSection, setFilterHubSection] = useState("quick");
   const [showInstructions, setShowInstructions] = useState(false);
   const [showPresetManager, setShowPresetManager] = useState(false);
 
@@ -385,7 +386,10 @@ function App() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowFilterHub(true)}
+                onClick={() => {
+                  setFilterHubSection("quick");
+                  setShowFilterHub(true);
+                }}
                 className={`px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow hover:shadow-md ${animationsEnabled ? "transition-all hover:scale-105" : ""}`}
               >
                 Open Filters
@@ -480,10 +484,19 @@ function App() {
           onSave={handleConfirmSavePreset}
         />
       </div>
-      <FilterHub open={showFilterHub} onClose={() => setShowFilterHub(false)} />
+      <FilterHub
+        open={showFilterHub}
+        onClose={() => setShowFilterHub(false)}
+        initialSection={filterHubSection}
+      />
       <InstructionsHub
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
+        onOpenAdvanced={() => {
+          setShowInstructions(false);
+          setFilterHubSection("adv");
+          setShowFilterHub(true);
+        }}
       />
       <PresetManagerPanel
         isOpen={showPresetManager}

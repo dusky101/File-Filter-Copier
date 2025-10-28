@@ -52,6 +52,40 @@ Prerequisites
   - Duplicate filenames are automatically disambiguated (file_1.ext, file_2.ext, ...)
 - Presets: save your current configuration and load/delete presets later
 
+## Filters cheat sheet
+
+Quick reference of the most common filters and how to express them.
+
+| Filter | Values | Examples |
+|-------|--------|----------|
+| Size | `all`, `small` (< 1 MB), `medium` (1–10 MB), `large` (10–100 MB), `huge` (> 100 MB), custom | `custom:0-5MB`, `custom:100MB-inf` |
+| Time | `none`, `<Nh`, `<Nd`, `>Nd` (also `w`=weeks, `m`=months) | `<7d`, `>30d`, `<24h` |
+| Extensions include | Comma-separated list | `.py, .js, .ts` |
+| Extensions exclude | Comma-separated list | `.map, .tmp, .log` |
+| File Types | Semantic categories | `Images, Video`, `Code, Web, Scripts` |
+| Project Type | Semantic roles | `Models, Controllers, Services` |
+| Folder Exclusions | Toggle defaults + custom names | `node_modules, dist, .git`, custom: `build, .cache` |
+| Deep Scan | Terms + mode | Terms: `error, timeout`, Mode: `any` or `all` |
+| Advanced (brief) | Hidden, symlinks, depth, gitignore, globs/regex, time attribute, deep-scan max size | e.g., include hidden, follow symlinks, `maxDepth=2`, respect `.gitignore`, deep-scan `50 MB` |
+
+### Matchers quick reference (Glob vs Regex)
+
+These apply to filename and full path (case-insensitive). Use globs for simple patterns, regex for precise control.
+
+| Type | Purpose | Examples |
+|------|---------|----------|
+| Glob include | Match specific paths or names | `**/src/**`, `*.md`, `**/*.test.js` |
+| Glob exclude | Skip paths or names | `**/dist/**`, `*.log`, `**/__snapshots__/**` |
+| Regex include | Precise filename/path matches | `(^&#124;/)test-.*\\.js$`, `(^&#124;/)src($&#124;/)` |
+| Regex exclude | Precise exclusions | `(^&#124;/)__snapshots__($&#124;/)`, `.*\\.(map&#124;tmp)$` |
+
+Tips
+
+- Custom size syntax is `custom:&lt;min&gt;-&lt;max&gt;&lt;UNIT&gt;`, where UNIT is KB, MB, or GB. Example: `custom:0-5MB`, `custom:100MB-inf`.
+- Time filter examples: `<7d` (last week), `>30d` (older than 30 days), `<24h` (last day).
+- Regex anchors `^` and `$` refer to the start/end of the filename or full path string. Use `(^|/)` to match a folder boundary in POSIX-like paths.
+- In regex, escape dots: use `\\.` to match a literal `.` in extensions.
+
 ## Architecture Overview
 
 High level

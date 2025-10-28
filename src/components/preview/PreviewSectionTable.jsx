@@ -205,7 +205,7 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
                   width: px(colWidths[c.key]),
                   boxShadow: selected
                     ? "inset 0 0 0 2px rgba(16,185,129,1)"
-                    : undefined, // full rectangle
+                    : undefined,
                 };
                 return (
                   <td
@@ -213,10 +213,15 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
                     onMouseDown={(e) => cellMouseDown(ri, ci, e)}
                     onMouseEnter={() => cellMouseEnter(ri, ci)}
                     style={style}
-                    className="px-4 py-2 whitespace-nowrap text-sm text-slate-800 dark:text-slate-200"
+                    className="px-4 py-2 whitespace-nowrap overflow-hidden text-sm text-slate-800 dark:text-slate-200"
                     title={typeof text === "string" ? text : undefined}
                   >
-                    {content}
+                    {/* clip inside cell; show ellipsis for plain text */}
+                    {typeof content === "string" ? (
+                      <span className="block truncate">{content}</span>
+                    ) : (
+                      <div className="min-w-0 overflow-hidden">{content}</div>
+                    )}
                   </td>
                 );
               })}

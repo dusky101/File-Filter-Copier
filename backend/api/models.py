@@ -13,6 +13,7 @@ class ScanRequest(BaseModel):
     size_filter: str = Field(default=">1KB", description="Size filter (>1KB, <1KB, >500MB, all)")
     time_filter: str = Field(default="none", description="Time filter (<1h, <24h, <7d, <30d, >30d, none)")
     selected_types: List[str] = Field(default=[], description="List of semantic file types to include")
+    project_types: List[str] = Field(default_factory=list, description="Project role types (Models, Views, ViewModels, etc.)")
     deep_scan: bool = Field(default=False, description="Enable deep content scanning")
     deep_scan_terms: List[str] = Field(default=[], description="Keywords to search for in deep scan")
     deep_scan_mode: str = Field(default="OR", description="Match mode: OR or AND")
