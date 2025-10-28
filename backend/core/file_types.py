@@ -12,7 +12,7 @@ FILE_TYPE_PATTERNS = {
     "Video": [".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm"],
 
     # UI: Development
-    "Code": [".js", ".py", ".java", ".cpp", ".c", ".rb", ".go", ".rs", ".swift"],
+    "Code": [".js", ".ts", ".jsx", ".tsx",".py", ".java", ".cpp", ".c", ".rb", ".go", ".rs", ".swift"],
     "Web": [".html", ".css", ".jsx", ".tsx", ".vue", ".scss", ".sass", ".less"],
     "Config": [".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".conf"],
     "Scripts": [".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".command"],
