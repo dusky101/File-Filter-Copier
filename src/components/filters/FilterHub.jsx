@@ -25,7 +25,7 @@ import AdvancedFilterHub from "./AdvancedFilterHub";
  * A sleek, sectioned drawer that centralizes all filtering options.
  * Sections are navigation-driven; changes apply immediately. The footer provides Close/Reset.
  */
-const FilterHub = ({ open, onClose }) => {
+const FilterHub = ({ open, onClose, initialSection }) => {
   const {
     // ext
     includeExtensions,
@@ -70,6 +70,12 @@ const FilterHub = ({ open, onClose }) => {
   const { excludeDuplicates, setExcludeDuplicates } = usePreviewStore();
 
   const [section, setSection] = useState("quick");
+  // Allow parent to request a specific section when opening (e.g., "adv")
+  React.useEffect(() => {
+    if (open && initialSection && initialSection !== section) {
+      setSection(initialSection);
+    }
+  }, [open, initialSection]);
   const [quickActiveKey, setQuickActiveKey] = useState(null);
   const [quickSnapshot, setQuickSnapshot] = useState(null);
 

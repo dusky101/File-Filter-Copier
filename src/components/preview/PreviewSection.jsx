@@ -3,26 +3,21 @@ import {
   FileText,
   Download,
   Settings2,
-  ChevronUp,
-  ChevronDown,
   Search,
   SortAsc,
   SortDesc,
-  Folder,
-  Calendar,
-  HardDrive,
-  FileType,
+  Filter,
   X,
   Copy,
   CheckCircle2,
-  Filter, // + add filter icon
+  Loader2, // + spinner for copy action
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
-import { formatFileSize } from "../../services/api";
 import { exportPreview } from "../../utils/exportUtils";
 import PreviewSectionTable from "./PreviewSectionTable";
+import { copyFiles } from "../../services/api"; // + copy API
 
 /**
  * PreviewSection Component
@@ -34,7 +29,7 @@ import PreviewSectionTable from "./PreviewSectionTable";
  */
 const PreviewSection = ({ onOpenSettings }) => {
   const { filteredFiles, duplicates } = usePreviewStore();
-  const { dryRun } = useFilterStore();
+  const { dryRun, destinationFolder, outputFolderName } = useFilterStore(); // + need dest/output for copy
   const {
     animationsEnabled,
     defaultExportFormat,
@@ -55,6 +50,23 @@ const PreviewSection = ({ onOpenSettings }) => {
   const [sortOrder, setSortOrder] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(defaultItemsPerPage);
+
+  // Selection state (by file.path)
+  const [selectedFiles, setSelectedFiles] = useState(() => new Set());
+  const toggleFileSelection = (path) =>
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  const deselectAll = () => setSelectedFiles(new Set());
+  // Select all over the current processed (filtered+sorted) list
+  const selectAll = (all = []) =>
+    setSelectedFiles(new Set(all.map((f) => f.path)));
+
+  // Copy‑selected progress flag (fix: was missing)
+  const [isCopyingSelected, setIsCopyingSelected] = useState(false);
 
   // Duplicates dialog state/hooks (must be before any early return)
   const [dupOpen, setDupOpen] = useState(false);
@@ -208,6 +220,21 @@ const PreviewSection = ({ onOpenSettings }) => {
     return result;
   }, [safeFilteredFiles, searchTerm, sortBy, sortOrder, extSelected, extAll]);
 
+  // Keep selection valid when the processed list changes
+  useEffect(() => {
+    if (selectedFiles.size === 0) return;
+    const valid = new Set(processedFiles.map((f) => f.path));
+    setSelectedFiles((prev) => {
+      let changed = false;
+      const next = new Set();
+      for (const p of prev) {
+        if (valid.has(p)) next.add(p);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [processedFiles]); // eslint-disable-line
+
   // Pagination
   const totalPages = Math.ceil(processedFiles.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -243,10 +270,55 @@ const PreviewSection = ({ onOpenSettings }) => {
         // Keep timestamp and flat listing consistent with current UI
         useTimestamp: true,
         groupByType: false,
+        // Only export selected rows if any are selected; otherwise export all
+        selectedPaths: selectedFiles, // Set<string>
+        selectionKey: "path",
       });
     } catch (error) {
       console.error("Export failed:", error);
       alert("Failed to export files. Please try again.");
+    }
+  };
+
+  /**
+   * Copy selected files to the destination folder
+   */
+  const handleCopySelected = async () => {
+    try {
+      if (!destinationFolder || !outputFolderName) {
+        alert("Select destination and output folder name first.");
+        return;
+      }
+      const filesToCopy = processedFiles
+        .filter((f) => selectedFiles.has(f.path))
+        .map((f) => f.path);
+
+      if (filesToCopy.length === 0) {
+        alert("No selected rows to copy.");
+        return;
+      }
+
+      setIsCopyingSelected(true);
+      const res = await copyFiles({
+        files: filesToCopy,
+        destination: destinationFolder,
+        outputFolder: outputFolderName,
+      });
+
+      if (res?.success) {
+        alert(
+          `✅ Copied ${res.data.copied_count} file${
+            res.data.copied_count !== 1 ? "s" : ""
+          }.\n\nOutput: ${res.data.output_path}`
+        );
+      } else {
+        alert(`❌ Copy failed: ${res?.error || "Unknown error"}`);
+      }
+    } catch (e) {
+      console.error("Copy selected failed:", e);
+      alert("❌ Failed to copy selected files. Please try again.");
+    } finally {
+      setIsCopyingSelected(false);
     }
   };
 
@@ -407,18 +479,76 @@ const PreviewSection = ({ onOpenSettings }) => {
         </select>
       </div>
 
+      {/* Copy selected toolbar (below search) */}
+      <div className="px-6 pb-3 flex items-center justify-between">
+        <div className="text-sm text-slate-600 dark:text-slate-400">
+          {selectedFiles.size > 0
+            ? `${selectedFiles.size} selected`
+            : "No rows selected"}
+          {selectedFiles.size > 0
+            ? ` of ${processedFiles.length} result${
+                processedFiles.length !== 1 ? "s" : ""
+              }`
+            : ""}
+        </div>
+        <button
+          onClick={handleCopySelected}
+          disabled={
+            isCopyingSelected ||
+            selectedFiles.size === 0 ||
+            !destinationFolder ||
+            !outputFolderName
+          }
+          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border 
+            ${
+              selectedFiles.size > 0 && destinationFolder && outputFolderName
+                ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
+                : "bg-slate-200/60 dark:bg-slate-700/40 text-slate-500 border-slate-300 dark:border-slate-600 cursor-not-allowed"
+            }`}
+          title={
+            selectedFiles.size === 0
+              ? "Select rows to enable"
+              : !destinationFolder || !outputFolderName
+                ? "Set destination and output folder name"
+                : "Copy selected rows"
+          }
+        >
+          {isCopyingSelected ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Copying…
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              Copy selected
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Table */}
       <PreviewSectionTable
         files={paginatedFiles}
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSort={handleSort}
+        // Selection wiring
+        selectedFiles={selectedFiles}
+        toggleFileSelection={toggleFileSelection}
+        selectAll={() => selectAll(processedFiles)}
+        deselectAll={deselectAll}
+        selectionKey="path"
+        totalSelectableCount={processedFiles.length}
         columns={[
           { key: "name", label: "Name", getValue: (f) => f.name },
           {
             key: "searchType",
             label: "Search Type",
-            getValue: (f) => searchTypeFor(f),
+            getValue: (f) =>
+              Array.isArray(f.search_tags) && f.search_tags.length
+                ? f.search_tags.join(", ")
+                : f.semantic_type || "Unclassified",
             renderCell: (f) =>
               Array.isArray(f.search_tags) && f.search_tags.length ? (
                 <div className="flex flex-wrap gap-1">
@@ -433,7 +563,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                 </div>
               ) : (
                 <span className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                  {searchTypeFor(f)}
+                  {f.semantic_type || "Unclassified"}
                 </span>
               ),
           },

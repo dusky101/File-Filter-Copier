@@ -6,7 +6,7 @@ import os
 import json
 import sys
 from pathlib import Path
-from fastapi import APIRouter, Request, HTTPException  # added HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import fnmatch
 
@@ -23,9 +23,12 @@ from features.preset_manager import (
     list_presets, save_preset, load_preset, delete_preset,
     get_default_preset, set_default_preset, clear_default_preset
 )
-from .models import PresetResponse, PresetRequest
+# Robust import for the SSE progress manager (works in both run modes)
+try:
+    from .progress import manager
+except Exception:
+    from api.progress import manager
 
-from api.progress import manager
 from api.models import (
     ScanRequest,
     ScanResponse,
@@ -177,19 +180,20 @@ async def scan_files(request: ScanRequest, http_req: Request):
         if not os.path.isdir(request.folder):
             raise HTTPException(status_code=400, detail="Source path is not a directory")
 
+        file_types = request.selected_types or []
+        project_types = request.project_types or []
+
         # Optional progress channel
         # Use SSE only when client requested and deep scan really runs
         progress_id = http_req.headers.get("x-progress-id")
         use_progress = bool(progress_id and request.deep_scan and request.deep_scan_terms)
 
-        # When estimating totals for progress, also apply default exclusions and skip symlinks
         if use_progress:
-            # Candidate pass 1: size/time only
             prelim = filter_files(
                 request.folder,
                 request.size_filter,
                 request.time_filter,
-                request.selected_types,  # extension/semantic gating if provided
+                file_types,
                 deep_scan=False,
                 deep_scan_term=None,
                 follow_symlinks=request.follow_symlinks,
@@ -201,8 +205,10 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 name_regex_exclude=request.name_regex_exclude,
                 time_attribute=request.time_attribute,
                 deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
+                project_types=project_types,
             )
-            prelim_paths = [p for p, _ in prelim]
+            # filter_files returns (path, semantic_type, tags)
+            prelim_paths = [tpl[0] for tpl in prelim]
 
             # Extension filters
             prelim_paths = filter_by_extension(
@@ -261,7 +267,7 @@ async def scan_files(request: ScanRequest, http_req: Request):
              request.folder,
              request.size_filter,
              request.time_filter,
-             request.selected_types,
+             file_types,
              deep_scan=request.deep_scan,
              deep_scan_term=request.deep_scan_terms,
              deep_scan_mode=request.deep_scan_mode,
@@ -275,6 +281,7 @@ async def scan_files(request: ScanRequest, http_req: Request):
              name_regex_exclude=request.name_regex_exclude,
              time_attribute=request.time_attribute,
              deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
+             project_types=project_types,
          )
 
         # Step 2: Apply extension filters

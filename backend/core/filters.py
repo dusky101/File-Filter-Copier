@@ -31,7 +31,7 @@ def filter_files(
     source_folder,
     size_filter,
     time_filter,
-    semantic_types,
+    semantic_types,            # file types (e.g., Images, Code, Swift, …)
     deep_scan=False,
     deep_scan_term=None,
     deep_scan_mode="OR",
@@ -39,13 +39,14 @@ def filter_files(
     # Advanced
     follow_symlinks: bool = False,
     include_hidden: bool = False,
-    max_depth: int = 0,  # 0 = unlimited
+    max_depth: int = 0,
     name_glob_include: Optional[list[str]] = None,
     name_glob_exclude: Optional[list[str]] = None,
     name_regex_include: Optional[str] = None,
     name_regex_exclude: Optional[str] = None,
-    time_attribute: str = "mtime",  # 'mtime' | 'ctime' | 'atime'
-    deep_scan_max_size_bytes: int = 0,  # 0 = unlimited
+    time_attribute: str = "mtime",
+    deep_scan_max_size_bytes: int = 0,
+    project_types: Optional[list[str]] = None,  # <- NEW: project role filters (Models, Controllers, Assets, …)
 ):
     """
     Traverse a folder and return files matching filters.
@@ -172,15 +173,21 @@ def filter_files(
 
                 # Semantic / Deep Scan filter
                 matched_type = None
-                if semantic_types or (deep_scan and deep_scan_term):
+                if semantic_types or project_types or (deep_scan and deep_scan_term):
                     # Optional deep-scan size cap
                     allow_deep = True
                     if deep_scan and deep_scan_max_size_bytes and size_bytes > deep_scan_max_size_bytes:
                         allow_deep = False
+
+                    # If we require semantic gating and deep scan, but file is too big to scan, skip
+                    if (semantic_types or project_types) and (deep_scan and deep_scan_term) and not allow_deep:
+                        continue
+
                     matched_type = get_semantic_match(
                         file,
                         root,
-                        semantic_types,
+                        semantic_types,              # file types
+                        project_types,               # project types
                         deep_scan=deep_scan and allow_deep,
                         deep_scan_term=deep_scan_term,
                         deep_scan_mode=deep_scan_mode,
@@ -191,7 +198,7 @@ def filter_files(
                         continue
                     if deep_scan and deep_scan_term:
                         tags.append("Deep Scan")
-                    if semantic_types:
+                    if semantic_types or project_types:
                         tags.append("Semantic")
 
                 matching_files.append((full_path, matched_type, tags))
@@ -233,60 +240,88 @@ def _parse_time_filter(time_filter, now):
 def get_semantic_match(
     filename,
     folder_path,
-    selected_types,
+    file_types,
+    project_types,
     deep_scan=False,
     deep_scan_term=None,
     deep_scan_mode="OR",
     file_size: int = 0,
     progress_callback: Optional[Callable[[str, str, int], None]] = None,
-):
-    """
-    Match a file against semantic filters and/or deep scan terms.
-    """
-    full_path = os.path.join(folder_path, filename)
-    ext = os.path.splitext(filename)[1].lower()
-    name_lower = filename.lower()
+ ):
+     """
+    Match a file against:
+      - file_types (extensions/keywords like Images, Swift, …)
+      - project_types (path/name keywords like Controllers, Assets, …)
+      - deep_scan terms
+    Rules:
+      - If both file_types and project_types are provided, require BOTH to match (intersection).
+      - If only one group is provided, require that group.
+      - If deep_scan terms are provided, content must match too.
+     """
+     full_path = os.path.join(folder_path, filename)
+     ext = os.path.splitext(filename)[1].lower()
+     name_lower = filename.lower()
+     path_lower = full_path.lower()
 
-    # Normalize selected types (case/whitespace)
-    selected_norm = set(t.strip().lower() for t in (selected_types or []))
 
-    # Check semantic type filters (extension- or keyword-based)
-    matched_type = None
-    if selected_norm:
-        for file_type, patterns in FILE_TYPE_PATTERNS.items():
-            if file_type.strip().lower() not in selected_norm:
+     file_norm = {t.strip().lower() for t in (file_types or []) if str(t).strip()}
+     proj_norm = {t.strip().lower() for t in (project_types or []) if str(t).strip()}
+
+     def match_any(selected: set[str]) -> Optional[str]:
+        if not selected:
+            return None
+        for t, patterns in FILE_TYPE_PATTERNS.items():
+            if t.strip().lower() not in selected:
                 continue
-
             for pat in patterns:
-                if isinstance(pat, str) and pat.startswith("."):
-                    if ext == pat.lower():
-                        matched_type = file_type
-                        break
-                elif isinstance(pat, str) and pat:
-                    if pat.lower() in name_lower:
-                        matched_type = file_type
-                        break
-            if matched_type:
-                break
+                if not isinstance(pat, str):
+                    continue
+                p = pat.lower()
+                if p.startswith("."):
+                    if ext == p:
+                        return t
+                else:
+                    if p in name_lower or p in path_lower:
+                        return t
+        return None
 
-    # Deep scan: search file content for term(s)
-    if deep_scan and deep_scan_term:
-        # Normalize search terms to list
-        if isinstance(deep_scan_term, str):
-            terms = [deep_scan_term] if deep_scan_term.strip() else []
-        else:
-            terms = [t for t in deep_scan_term if isinstance(t, str) and t.strip()]
+    # 1) Semantic match(es)
+     file_hit = match_any(file_norm) if file_norm else None
+     proj_hit = match_any(proj_norm) if proj_norm else None
 
-        if terms:
-            content_match = _search_file_content(
-                full_path, terms, deep_scan_mode, on_progress=progress_callback, file_size=file_size
-            )
-            if content_match:
-                return matched_type or "Deep Scan Match"
-            else:
-                return None
+     if file_norm and proj_norm:
+        if not (file_hit and proj_hit):
+            return None
+        semantic_type = proj_hit or file_hit
+     elif file_norm:
+        if not file_hit:
+            return None
+        semantic_type = file_hit
+     elif proj_norm:
+        if not proj_hit:
+            return None
+        semantic_type = proj_hit
+     else:
+        semantic_type = None
 
-    return matched_type
+    # 2) Deep scan (content) if requested
+     if deep_scan and deep_scan_term:
+         # Normalize terms
+         if isinstance(deep_scan_term, str):
+             terms = [deep_scan_term] if deep_scan_term.strip() else []
+         else:
+             terms = [t for t in deep_scan_term if isinstance(t, str) and t.strip()]
+         if terms:
+             content_match = _search_file_content(
+                 full_path, terms, deep_scan_mode, on_progress=progress_callback, file_size=file_size
+             )
+             if not content_match:
+                 return None
+             # Keep semantic label if present; otherwise tag as a deep scan match
+             return semantic_type or "Deep Scan Match"
+
+     # 3) Only semantic filter active
+     return semantic_type
 
 
 def _search_file_content(
