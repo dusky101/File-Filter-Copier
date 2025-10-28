@@ -2,11 +2,43 @@ import React, { useEffect, useRef, useState } from "react";
 
 const px = (n) => `${Math.max(60, Math.min(1200, n))}px`;
 
-const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
+const PreviewSectionTable = ({
+  files,
+  columns,
+  sortBy,
+  sortOrder,
+  onSort,
+  // Selection props (new)
+  selectedFiles,
+  toggleFileSelection,
+  selectAll,
+  deselectAll,
+  selectionKey = "path",
+  totalSelectableCount, // total items in the current processed list (not just the page)
+}) => {
   const [colWidths, setColWidths] = useState(() =>
     Object.fromEntries(columns.map((c) => [c.key, 200]))
   );
 
+  // Selection enablement
+  const selectionEnabled =
+    selectedFiles instanceof Set && typeof toggleFileSelection === "function";
+
+  // Header checkbox state reflects GLOBAL selection across processed list
+  const headerCheckboxRef = useRef(null);
+  const totalCount = totalSelectableCount ?? files.length;
+  const allSelectedGlobal =
+    selectionEnabled && totalCount > 0 && selectedFiles.size >= totalCount;
+  const someSelectedGlobal =
+    selectionEnabled && selectedFiles.size > 0 && !allSelectedGlobal;
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someSelectedGlobal;
+    }
+  }, [someSelectedGlobal]);
+
+  // Range selection for TSV copy (columns only, excludes the checkbox column)
   const [sel, setSel] = useState(null); // { rs, cs, re, ce }
   const selectingRef = useRef(false);
 
@@ -48,26 +80,16 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
     if (!col) return;
 
     const headerLen = (col.label || "").length;
-
-    // Sample more rows for better accuracy (500 instead of 300)
     const sampleSize = Math.min(500, files.length);
     const values = files.slice(0, sampleSize).map((f) => {
       const v = (col.getValue ? col.getValue(f) : f[col.key]) ?? "";
       return String(v);
     });
 
-    // Find the longest value
     const maxLen = Math.max(headerLen, ...values.map((s) => s.length));
-
-    // Better character width estimation:
-    // - Base calculation: 9px per character (increased from 8.5)
-    // - Add extra padding: 48px (increased from 36)
-    // - For very long strings (>100 chars), use slightly smaller multiplier to avoid excessive width
     const charWidth = maxLen > 100 ? 8.5 : 9;
     const padding = 48;
     const calculatedWidth = Math.round(maxLen * charWidth + padding);
-
-    // Clamp between reasonable bounds: 80px min, 1200px max
     const width = Math.min(1200, Math.max(80, calculatedWidth));
 
     setColWidths((w) => ({ ...w, [key]: width }));
@@ -78,7 +100,7 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
     onSort(key);
   };
 
-  // Selection
+  // Cell range selection
   const cellMouseDown = (ri, ci, e) => {
     e.preventDefault();
     selectingRef.current = true;
@@ -147,21 +169,44 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
       <table className="w-full select-none table-fixed">
         <thead className="bg-slate-50 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-700">
           <tr>
+            {/* Selection header (global select all) */}
+            {selectionEnabled ? (
+              <th
+                className="px-4 py-3 text-left"
+                style={{ width: "56px", userSelect: "none" }}
+              >
+                <input
+                  ref={headerCheckboxRef}
+                  type="checkbox"
+                  checked={allSelectedGlobal}
+                  onChange={(e) =>
+                    e.target.checked ? selectAll?.() : deselectAll?.()
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  title={
+                    allSelectedGlobal ? "Deselect all rows" : "Select all rows"
+                  }
+                  aria-label={
+                    allSelectedGlobal ? "Deselect all rows" : "Select all rows"
+                  }
+                />
+              </th>
+            ) : null}
+
             {columns.map((c) => (
               <th
                 key={c.key}
                 role="button"
                 tabIndex={0}
-                onClick={() => headerClick(c.key)} // whole header is clickable
-                onDoubleClick={() => autoFit(c.key)} // double-click header to auto-fit
+                onClick={() => headerClick(c.key)}
+                onDoubleClick={() => autoFit(c.key)}
                 style={{ width: px(colWidths[c.key]), userSelect: "none" }}
                 className="relative px-4 py-3 text-left text-sm font-semibold tracking-wide text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 cursor-pointer"
               >
-                {/* FIX: Ensure the span fills the full width of the header cell */}
                 <span className="inline-flex items-center w-full">
                   <span className="flex-1 truncate">{c.label}</span>
                   {headerSortIcon(c.key)}
-                  {/* Optional header control (e.g., filter button) */}
                   {c.headerExtra ? (
                     <span
                       className="ml-1 inline-flex flex-shrink-0"
@@ -173,7 +218,6 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
                     </span>
                   ) : null}
                 </span>
-                {/* Resize handle */}
                 <div
                   onMouseDown={(e) => startResize(c.key, e)}
                   onClick={(e) => e.stopPropagation()}
@@ -194,6 +238,33 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
               key={ri}
               className="hover:bg-slate-50 dark:hover:bg-slate-700/50"
             >
+              {/* Row selection cell (excluded from range selection) */}
+              {selectionEnabled ? (
+                <td
+                  className="px-4 py-3"
+                  style={{ width: "56px" }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {(() => {
+                    const id = f?.[selectionKey];
+                    const checked = selectedFiles.has(id);
+                    return (
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          if (id != null) toggleFileSelection(id);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        title={checked ? "Deselect row" : "Select row"}
+                        aria-label={checked ? "Deselect row" : "Select row"}
+                      />
+                    );
+                  })()}
+                </td>
+              ) : null}
+
               {columns.map((c, ci) => {
                 const text = c.getValue ? c.getValue(f) : f[c.key];
                 const content =
@@ -216,7 +287,6 @@ const PreviewSectionTable = ({ files, columns, sortBy, sortOrder, onSort }) => {
                     className="px-4 py-2 whitespace-nowrap overflow-hidden text-sm text-slate-800 dark:text-slate-200"
                     title={typeof text === "string" ? text : undefined}
                   >
-                    {/* clip inside cell; show ellipsis for plain text */}
                     {typeof content === "string" ? (
                       <span className="block truncate">{content}</span>
                     ) : (
