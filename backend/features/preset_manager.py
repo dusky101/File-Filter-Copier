@@ -1,14 +1,33 @@
 from __future__ import annotations
 from pathlib import Path
 import json
+import os
+import sys
 from typing import Dict, Any, Optional, Tuple
 
-_STORE_PATH = Path(__file__).resolve().parents[1] / "filter_presets.json"
+# DETERMINE STORAGE PATH
+# 1. Priority: Use the path passed from Electron (AppData)
+env_config_dir = os.getenv("FFC_CONFIG_DIR")
+
+if env_config_dir:
+    _STORE_PATH = Path(env_config_dir) / "filter_presets.json"
+
+# 2. Fallback: If running as a standalone .exe (Portable mode)
+elif getattr(sys, 'frozen', False):
+    _STORE_PATH = Path(sys.executable).parent / "filter_presets.json"
+
+# 3. Fallback: Dev mode (Local source folder)
+else:
+    _STORE_PATH = Path(__file__).resolve().parents[1] / "filter_presets.json"
+
 _DEFAULT_KEY = "__default__"  # reserved top-level key to store default preset name
 
 def _ensure_store(path: Path = _STORE_PATH) -> None:
     if not path.exists():
-        path.write_text("{}", encoding="utf-8")
+        try:
+            path.write_text("{}", encoding="utf-8")
+        except Exception:
+            pass
 
 def _read_raw(path: Path = _STORE_PATH) -> Dict[str, Any]:
     _ensure_store(path)
@@ -22,9 +41,12 @@ def _read_raw(path: Path = _STORE_PATH) -> Dict[str, Any]:
         return {}
 
 def _write_raw(data: Dict[str, Any], path: Path = _STORE_PATH) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"[Preset Manager] Failed to write presets: {e}")
 
 def _read() -> Tuple[Dict[str, Dict[str, Any]], Optional[str]]:
     """

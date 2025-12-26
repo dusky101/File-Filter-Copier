@@ -2,36 +2,42 @@
   "name": "file-filter-copier",
   "productName": "File Filter Copier",
   "version": "1.0.0",
-  "description": "My Electron application description",
-  "main": ".vite/build/main.js",
+  "description": "An app that scans folders, filters files using powerful criteria (size, time, types, deep content), previews results, and optionally copies them into a structured output folder with a log",
+  "main": "./.vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "echo \"No linting configured\""
+    "lint": "echo \"No linting configured\"",
+    "build": "electron-builder"
   },
   "keywords": [],
   "author": {
     "name": "Marc Oliff",
     "email": "marc.oliff@outlook.com"
   },
+  "config": {
+    "forge": "./forge.config.js"
+  },
   "license": "MIT",
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.0",
-    "@electron-forge/maker-deb": "^7.10.0",
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
     "@electron-forge/maker-dmg": "^7.10.2",
-    "@electron-forge/maker-rpm": "^7.10.0",
-    "@electron-forge/maker-squirrel": "^7.10.0",
-    "@electron-forge/maker-zip": "^7.10.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.10.0",
-    "@electron-forge/plugin-fuses": "^7.10.0",
-    "@electron-forge/plugin-vite": "^7.10.0",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/plugin-fuses": "^7.10.2",
+    "@electron-forge/plugin-vite": "^7.10.2",
     "@electron/fuses": "^1.8.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "electron": "38.2.2",
+    "electron-builder": "^26.0.12",
+    "electron-forge-maker-nsis": "^26.0.12",
     "electron-squirrel-startup": "^1.0.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
@@ -48,5 +54,64 @@
     "tailwind-merge": "^3.3.1",
     "tailwind-variants": "^3.1.1",
     "zustand": "^5.0.8"
+  },
+  "build": {
+    "appId": "com.filefiltercopier.app",
+    "productName": "File Filter Copier",
+    "asar": true,
+    "directories": {
+      "buildResources": "src/assets",
+      "output": "dist"
+    },
+    "files": [
+      "src",
+      "backend/dist/file-filter-backend.exe",
+      "./.vite/build",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/dist/file-filter-backend.exe",
+        "to": "file-filter-backend"
+      },
+      {
+        "from": "src/assets/splash.png",
+        "to": "splash.png"
+      },
+      {
+        "from": "src/assets/icon.png",
+        "to": "icon.png"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icons/win/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "darkModeSupport": true,
+      "icon": "src/assets/icons/mac/icon.icns"
+    },
+    "linux": {
+      "target": [
+        "deb",
+        "rpm"
+      ],
+      "category": "Utility",
+      "icon": "src/assets/icons/linux/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/assets/icons/win/icon.ico",
+      "uninstallerIcon": "src/assets/icons/win/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "File Filter Copier"
+    }
   }
 }

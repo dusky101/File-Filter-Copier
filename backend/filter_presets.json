@@ -1,158 +1,24 @@
 {
-  "fs": {
-    "folder": "/Users/marc/Downloads/FilteredFiles",
-    "size_filter": "all",
-    "time_filter": "<3h",
-    "selected_types": [],
-    "deep_scan": false,
-    "deep_scan_terms": [],
-    "deep_scan_mode": "ANY",
-    "include_exts": [],
-    "exclude_exts": [],
-    "excluded_folders": [
-      "node_modules",
-      "venv",
-      ".git",
-      "__pycache__",
-      ".idea",
-      "dist",
-      "build",
-      ".vscode"
-    ]
-  },
-  "riy": {
-    "folder": "/Users/marc/WhenWhereWho-SharedRebuild/WWWApp/WhenWhereWho/WhenWhereWho",
-    "size_filter": "all",
-    "time_filter": "none",
-    "selected_types": [],
-    "project_types": [],
-    "deep_scan": true,
-    "deep_scan_terms": [
-      "Created by Dashboard"
-    ],
-    "deep_scan_mode": "ANY",
-    "include_exts": [],
-    "exclude_exts": [
-      ".md",
-      ".txt"
-    ],
-    "excluded_folders": [
-      "venv",
-      ".git",
-      "__pycache__",
-      ".idea",
-      "dist",
-      "build",
-      ".vscode",
-      "node_modules"
-    ]
-  },
-  "edsfdsd": {
-    "folder": "/Users/marc/WhenWhereWho-SharedRebuild/WWWApp/WhenWhereWho/WhenWhereWho",
-    "destination": "/Users/marc/Downloads",
-    "output_folder_name": "WWWFilesSearch127",
-    "size_filter": "all",
-    "time_filter": "none",
-    "selected_types": [],
-    "project_types": [],
-    "deep_scan": false,
-    "deep_scan_terms": [],
-    "deep_scan_mode": "ANY",
-    "include_exts": [],
-    "exclude_exts": [
-      ".md",
-      ".txt"
-    ],
-    "excluded_folders": [
-      "node_modules",
-      "venv",
-      ".git",
-      "__pycache__",
-      ".idea",
-      "dist",
-      "build",
-      ".vscode"
-    ],
-    "follow_symlinks": false,
-    "include_hidden": false,
-    "max_depth": 0,
-    "time_attribute": "mtime",
-    "respect_gitignore": false,
-    "name_glob_include": [],
-    "name_glob_exclude": [],
-    "name_regex_include": null,
-    "name_regex_exclude": null,
-    "deep_scan_max_size_bytes": 0
-  },
-  "WWWFilterPreset": {
-    "folder": "/Users/marc/WhenWhereWho-SharedRebuild/WWWApp/WhenWhereWho/WhenWhereWho",
-    "destination": "/Users/marc/Downloads",
-    "output_folder_name": "WWWFilteredFiles",
-    "size_filter": "all",
-    "time_filter": "none",
-    "selected_types": [],
-    "project_types": [],
-    "deep_scan": false,
-    "deep_scan_terms": [],
-    "deep_scan_mode": "ANY",
-    "include_exts": [],
-    "exclude_exts": [
-      ".md",
-      ".txt"
-    ],
-    "excluded_folders": [
-      "node_modules",
-      "venv",
-      ".git",
-      "__pycache__",
-      ".idea",
-      "dist",
-      "build",
-      ".vscode"
-    ],
-    "follow_symlinks": false,
-    "include_hidden": false,
-    "max_depth": 0,
-    "time_attribute": "mtime",
-    "respect_gitignore": false,
-    "name_glob_include": [],
-    "name_glob_exclude": [],
-    "name_regex_include": null,
-    "name_regex_exclude": null,
-    "deep_scan_max_size_bytes": 0
-  },
-  "FFCFiles": {
-    "folder": "/Users/marc/CodingApps/FileFilterCopyElectron/File-Filter-Copier",
-    "destination": "/Users/marc/Downloads",
-    "output_folder_name": "FFCFiles",
-    "size_filter": "all",
-    "time_filter": "none",
-    "selected_types": [],
-    "project_types": [],
-    "deep_scan": false,
-    "deep_scan_terms": [],
-    "deep_scan_mode": "ANY",
-    "include_exts": [],
-    "exclude_exts": [],
-    "excluded_folders": [
-      "node_modules",
-      "venv",
-      ".git",
-      "__pycache__",
-      ".idea",
-      "dist",
-      "build",
-      ".vscode"
-    ],
-    "follow_symlinks": false,
-    "include_hidden": false,
-    "max_depth": 0,
-    "time_attribute": "mtime",
-    "respect_gitignore": false,
-    "name_glob_include": [],
-    "name_glob_exclude": [],
-    "name_regex_include": null,
-    "name_regex_exclude": null,
-    "deep_scan_max_size_bytes": 0
-  }
+  "presets": [
+    {
+      "name": "Images",
+      "description": "All image files",
+      "filters": [
+        {
+          "field": "type",
+          "value": "image"
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "description": "All document files",
+      "filters": [
+        {
+          "field": "type",
+          "value": "document"
+        }
+      ]
+    }
+  ]
 }

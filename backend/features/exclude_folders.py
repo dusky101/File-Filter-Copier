@@ -1,6 +1,7 @@
 import os
 import json
-from tkinter import filedialog
+
+# REMOVED: import tkinter and filedialog (not needed for headless backend)
 
 DEFAULT_EXCLUDED = {"venv", "__pycache__", ".git", ".idea", "node_modules"}
 EXCLUDE_CONFIG_FILE = "excluded_folders.json"
@@ -21,10 +22,6 @@ def save_excluded_folders(folders):
     except Exception as e:
         print(f"[Exclude Folders] Failed to save: {e}")
 
-def browse_exclude_folder(app):
-    folder = filedialog.askdirectory(initialdir=app.source_folder.get())
-    if folder:
-        folder_name = os.path.basename(folder)
-        app.excluded_folders.add(folder_name)
-        save_excluded_folders(app.excluded_folders)
-        app.update_excluded_display()
+# REMOVED: browse_exclude_folder function
+# The React Frontend now handles selecting folders and sends the 
+# data to the backend via API, so this function was dead code.
