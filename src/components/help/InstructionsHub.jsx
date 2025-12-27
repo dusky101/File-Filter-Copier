@@ -404,12 +404,16 @@ const ExportHelp = () => (
   <div>
     <SectionTitle
       title="Export"
-      subtitle="Export preview data to CSV/TXT/JSON/HTML/Markdown"
+      subtitle="Save scan results in various formats for reporting or external use"
     />
     <List
       items={[
-        "Exports use a centralized formatter—dates are preformatted; no re-parsing.",
-        "CSV columns: Name, Path, Size, Size (Formatted), Modified, Created, Type.",
+        "Interactive HTML: Generates a self-contained report with built-in search, sorting, and category filtering. Great for sharing with teams.",
+        "CSV: Spreadsheet-ready export. Columns include Name, Path, Classification, Extension, Size (bytes & formatted), Modified, and Created dates.",
+        "Markdown: Clean, formatted lists suitable for pasting into documentation or GitHub issues. Supports grouping by file type.",
+        "JSON: Full data dump including all metadata fields, ideal for programmatic processing or piping into other tools.",
+        "Text: A simple, human-readable list of filenames and paths.",
+        "Note: If you select specific files in the Preview tab (using checkboxes), only those files will be exported.",
       ]}
     />
   </div>
