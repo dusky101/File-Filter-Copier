@@ -9,7 +9,8 @@ Thumbs.db
 Icon?
 .Spotlight-V100
 .Trashes
-
+generate_icns.py
+macos_icon_padding.py
 # Editor/IDE
 .vscode/
 .idea/

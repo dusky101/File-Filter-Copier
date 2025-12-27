@@ -2,8 +2,8 @@
   "name": "file-filter-copier",
   "productName": "File Filter Copier",
   "version": "1.0.0",
-  "description": "My Electron application description",
-  "main": ".vite/build/main.js",
+  "description": "An app that scans folders, filters files using powerful criteria (size, time, types, deep content), previews results, and optionally copies them into a structured output folder with a log",
+  "main": "./.vite/build/main.js",
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
@@ -16,30 +16,14 @@
     "name": "Marc Oliff",
     "email": "marc.oliff@outlook.com"
   },
-  "license": "MIT",
-  "devDependencies": {
-    "@electron-forge/cli": "^7.10.0",
-    "@electron-forge/maker-deb": "^7.10.0",
-    "@electron-forge/maker-dmg": "^7.10.2",
-    "@electron-forge/maker-rpm": "^7.10.0",
-    "@electron-forge/maker-squirrel": "^7.10.0",
-    "@electron-forge/maker-zip": "^7.10.0",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.10.0",
-    "@electron-forge/plugin-fuses": "^7.10.0",
-    "@electron-forge/plugin-vite": "^7.10.0",
-    "@electron/fuses": "^1.8.0",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
-    "autoprefixer": "^10.4.21",
-    "electron": "38.2.2",
-    "electron-squirrel-startup": "^1.0.1",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.14",
-    "vite": "^5.4.20"
+  "config": {
+    "forge": "./forge.config.js"
   },
+  "license": "MIT",
   "dependencies": {
     "axios": "^1.12.2",
     "clsx": "^2.1.1",
+    "electron-squirrel-startup": "^1.0.1",
     "lucide-react": "^0.545.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -48,5 +32,24 @@
     "tailwind-merge": "^3.3.1",
     "tailwind-variants": "^3.1.1",
     "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-dmg": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/plugin-fuses": "^7.10.2",
+    "@electron-forge/plugin-vite": "^7.10.2",
+    "@electron/fuses": "^1.8.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "electron": "38.2.2",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.14",
+    "vite": "^5.4.20"
   }
 }

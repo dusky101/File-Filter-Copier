@@ -422,7 +422,7 @@ const PresetsHelp = () => (
       items={[
         "Use Save Preset to store the current filter configuration.",
         "Loading a preset will populate filters across sections; you can then tweak further.",
-        "Default preset: you can mark a preset as default and load it on startup from the backend presets menu.",
+        "Default preset: you can mark a preset as default and load it on startup from the presets menu.",
       ]}
     />
   </div>

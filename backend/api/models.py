@@ -10,6 +10,11 @@ from typing import List, Optional, Dict, Any
 class ScanRequest(BaseModel):
     """Request model for scanning files with filters"""
     folder: str = Field(..., description="Source folder path to scan")
+    
+    # --- ADDED FIELD HERE ---
+    dry_run: bool = Field(default=True, description="Dry run enabled (preview only)")
+    # ------------------------
+
     size_filter: str = Field(default=">1KB", description="Size filter (>1KB, <1KB, >500MB, all)")
     time_filter: str = Field(default="none", description="Time filter (<1h, <24h, <7d, <30d, >30d, none)")
     selected_types: List[str] = Field(default=[], description="List of semantic file types to include")
@@ -36,6 +41,7 @@ class ScanRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "folder": "/Users/marc/Documents",
+                "dry_run": True, # Updated example
                 "size_filter": ">1KB",
                 "time_filter": "<7d",
                 "selected_types": ["Python", "JavaScript"],
@@ -105,6 +111,7 @@ class PresetRequest(BaseModel):
             "example": {
                 "name": "PythonFilesLast7Days",
                 "config": {
+                    "dry_run": True,
                     "size_filter": ">1KB",
                     "time_filter": "<7d",
                     "selected_types": ["Python"],

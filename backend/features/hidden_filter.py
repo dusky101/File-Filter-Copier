@@ -2,7 +2,8 @@
 
 import os
 
-from features.exclude_folders import load_excluded_folders, save_excluded_folders, browse_exclude_folder
+# FIX: Removed 'browse_exclude_folder' (deleted function) and 'save_excluded_folders' (unused)
+from features.exclude_folders import load_excluded_folders
 
 EXCLUDED_FOLDERS = load_excluded_folders()
 
@@ -50,4 +51,3 @@ def is_in_excluded_folder(path, excluded_names):
     """Returns True if the file is inside a folder that should be excluded."""
     parts = os.path.normpath(path).split(os.sep)
     return any(part in excluded_names for part in parts)
-
