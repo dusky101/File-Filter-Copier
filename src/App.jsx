@@ -54,6 +54,8 @@ function App() {
   const [copyResult, setCopyResult] = useState(null); // { count, output_path }
   const [errorState, setErrorState] = useState(null); // { title, message }
   const [showPresetDialog, setShowPresetDialog] = useState(false);
+  // NEW: State for the enhanced Preset Loaded dialog
+  const [presetSuccess, setPresetSuccess] = useState(null); // { name, output }
 
   // progress modal state
   const [progressState, setProgressState] = useState({ open: false, id: null });
@@ -535,9 +537,12 @@ function App() {
           setShowFilterHub(true);
         }}
       />
+
+      {/* UPDATE: Pass the success handler to the manager */}
       <PresetManagerPanel
         isOpen={showPresetManager}
         onClose={() => setShowPresetManager(false)}
+        onPresetLoaded={(name, output) => setPresetSuccess({ name, output })}
       />
 
       {/* 1. Scan Success Dialog */}
@@ -630,6 +635,43 @@ function App() {
               className="w-full inline-flex justify-center items-center gap-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white px-5 py-2.5 text-sm font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-all"
             >
               Close
+            </button>
+          </DialogFooter>
+        </div>
+      </Dialog>
+
+      {/* 4. NEW: Preset Loaded Dialog */}
+      <Dialog open={!!presetSuccess} onClose={() => setPresetSuccess(null)}>
+        <div className="text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 mb-4">
+            <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
+          </div>
+          <DialogHeader>
+            <span className="text-xl">Preset Loaded!</span>
+          </DialogHeader>
+          <div className="mt-2 text-slate-600 dark:text-slate-300">
+            <p className="mb-2">
+              Preset{" "}
+              <strong className="text-slate-900 dark:text-white">
+                {presetSuccess?.name}
+              </strong>{" "}
+              is now active.
+            </p>
+            <div className="mt-3 bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-left">
+              <div className="text-xs text-slate-500 uppercase font-semibold mb-1">
+                Output Folder
+              </div>
+              <div className="font-mono text-slate-800 dark:text-slate-200 break-all">
+                {presetSuccess?.output}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setPresetSuccess(null)}
+              className="w-full inline-flex justify-center items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-all"
+            >
+              Start Scanning
             </button>
           </DialogFooter>
         </div>
