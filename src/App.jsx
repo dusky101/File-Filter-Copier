@@ -58,6 +58,20 @@ function App() {
   // progress modal state
   const [progressState, setProgressState] = useState({ open: false, id: null });
 
+  // --- NEW: Listen for "User Guide" menu click from Electron ---
+  useEffect(() => {
+    // Check if running in Electron environment
+    if (window.electron && window.electron.onOpenHelp) {
+      const removeListener = window.electron.onOpenHelp(() => {
+        console.log("Opening Help from Menu Bar");
+        setShowInstructions(true);
+      });
+      // Cleanup listener when component unmounts
+      return () => removeListener();
+    }
+  }, []);
+  // -------------------------------------------------------------
+
   const {
     sourceFolder,
     destinationFolder,

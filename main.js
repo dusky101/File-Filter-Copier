@@ -12,88 +12,13 @@ const {
   dialog,
   nativeImage,
   screen,
+  Menu, // <-- Added for Menu
+  shell, // <-- Added for links
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
-const { spawn, exec } = require("child_process"); // Added exec for taskkill
-
-// Add this function after your other requires and before the isDev declaration
-function createApplicationMenu(isDev = false) {
-  const { Menu } = require("electron");
-  const isMac = process.platform === "darwin";
-
-  const template = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: "about" },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide" },
-              { role: "hideOthers" },
-              { role: "unhide" },
-              { type: "separator" },
-              { role: "quit" },
-            ],
-          },
-        ]
-      : []),
-    {
-      label: "File",
-      submenu: [isMac ? { role: "close" } : { role: "quit" }],
-    },
-    {
-      label: "Edit",
-      submenu: [
-        { role: "undo" },
-        { role: "redo" },
-        { type: "separator" },
-        { role: "cut" },
-        { role: "copy" },
-        { role: "paste" },
-        ...(isMac
-          ? [
-              { role: "pasteAndMatchStyle" },
-              { role: "delete" },
-              { role: "selectAll" },
-            ]
-          : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }]),
-      ],
-    },
-    {
-      label: "View",
-      submenu: [
-        { role: "reload" },
-        { role: "forceReload" },
-        { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
-        { type: "separator" },
-        { role: "togglefullscreen" },
-        ...(isDev ? [{ type: "separator" }, { role: "toggleDevTools" }] : []),
-      ],
-    },
-    {
-      label: "Window",
-      submenu: [
-        { role: "minimize" },
-        { role: "zoom" },
-        ...(isMac
-          ? [{ type: "separator" }, { role: "front" }]
-          : [{ role: "close" }]),
-      ],
-    },
-  ];
-
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-  console.log(`Application menu created (dev mode: ${isDev})`);
-}
+const { spawn, exec } = require("child_process");
 
 // dev flag works with Vite/Forge globals and NODE_ENV
 const isDev =
@@ -813,33 +738,22 @@ app.on("window-all-closed", () => {
 
 // CRITICAL FIX: Kill backend process robustly on Windows
 const killBackend = () => {
-  console.log("Shutting down backend...");
-  try {
-    if (process.platform === "win32") {
-      // "Nuclear Option": Kill ANY process with this name.
-      // /F = Force, /IM = Image Name, /T = Tree (kills children)
-      // This works even if we didn't spawn it ourselves (e.g. a zombie from previous run)
-      exec(
-        "taskkill /F /IM file-filter-backend.exe /T",
-        (error, stdout, stderr) => {
-          if (error) {
-            // Ignore error if process wasn't found (already dead)
-            if (!stderr.includes("not found")) {
-              console.error("Taskkill failed:", stderr);
-            }
-          }
-        }
-      );
-    } else {
-      // Standard signal for macOS/Linux (if we have a reference)
-      if (backendProcess) {
+  if (backendProcess) {
+    console.log("Shutting down backend...");
+    try {
+      if (process.platform === "win32") {
+        // Force kill the entire process tree on Windows
+        // /F = force, /T = tree (kills children), /PID = process id
+        exec(`taskkill /F /T /PID ${backendProcess.pid}`);
+      } else {
+        // Standard signal for macOS/Linux
         backendProcess.kill("SIGTERM");
       }
+    } catch (e) {
+      console.error("Failed to kill backend:", e);
     }
-  } catch (e) {
-    console.error("Failed to kill backend:", e);
+    backendProcess = null;
   }
-  backendProcess = null;
 };
 
 app.on("before-quit", killBackend);
@@ -854,3 +768,159 @@ console.log("Electron main process started");
 console.log("App path:", app.getAppPath());
 console.log("Platform:", process.platform);
 console.log("Icon search bases:", baseDirs());
+
+// --------------------------------------------------------
+// APPLICATION MENU CONFIGURATION (INLINED FOR RELIABILITY)
+// --------------------------------------------------------
+function createApplicationMenu(isDev = false) {
+  const isMac = process.platform === "darwin";
+  const { BrowserWindow } = require("electron"); // Ensure we have access to this
+
+  const template = [
+    // 1. App Menu (macOS only)
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" },
+              { type: "separator" },
+              { role: "services" },
+              { type: "separator" },
+              { role: "hide" },
+              { role: "hideOthers" },
+              { role: "unhide" },
+              { type: "separator" },
+              { role: "quit" },
+            ],
+          },
+        ]
+      : []),
+
+    // 2. File Menu
+    {
+      label: "File",
+      submenu: [isMac ? { role: "close" } : { role: "quit" }],
+    },
+
+    // 3. Edit Menu
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        ...(isMac
+          ? [
+              { role: "pasteAndMatchStyle" },
+              { role: "delete" },
+              { role: "selectAll" },
+              { type: "separator" },
+              {
+                label: "Speech",
+                submenu: [{ role: "startSpeaking" }, { role: "stopSpeaking" }],
+              },
+            ]
+          : [{ role: "delete" }, { type: "separator" }, { role: "selectAll" }]),
+      ],
+    },
+
+    // 4. View Menu
+    {
+      label: "View",
+      submenu: [
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        // Only show Reload/DevTools in Development mode
+        ...(isDev
+          ? [
+              { type: "separator" },
+              { role: "reload" },
+              { role: "forceReload" },
+              { role: "toggleDevTools" },
+            ]
+          : []),
+      ],
+    },
+
+    // 5. Window Menu
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        ...(isMac
+          ? [
+              { type: "separator" },
+              { role: "front" },
+              { type: "separator" },
+              { role: "window" },
+            ]
+          : [{ role: "close" }]),
+      ],
+    },
+
+    // 6. Help Menu
+    {
+      role: "help",
+      submenu: [
+        {
+          label: "User Guide", // <--- CHANGED THIS
+          click: () => {
+            // <--- CHANGED THIS LOGIC
+            const win = BrowserWindow.getFocusedWindow();
+            if (win) {
+              win.webContents.send("menu:open-help");
+            }
+          },
+        },
+        {
+          label: "Report an Issue",
+          click: async () => {
+            await shell.openExternal(
+              "https://github.com/dusky101/file-filter-copier/issues"
+            );
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Open Settings Folder",
+          click: async () => {
+            await shell.openPath(app.getPath("userData"));
+          },
+        },
+        // About (Windows/Linux)
+        ...(!isMac
+          ? [
+              { type: "separator" },
+              {
+                label: "About File Filter Copier",
+                click: () => {
+                  dialog.showMessageBox({
+                    type: "info",
+                    title: "About File Filter Copier",
+                    message: "File Filter Copier",
+                    detail: `Version: ${app.getVersion()}\n\nDeveloped by FCM Tech`,
+                    buttons: ["OK"],
+                    // Tries to find icon in assets
+                    icon: path.join(__dirname, "assets", "icon.png"),
+                  });
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+
+  console.log(`Application menu created (dev mode: ${isDev})`);
+}

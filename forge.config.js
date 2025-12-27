@@ -30,29 +30,49 @@ module.exports = {
   },
   rebuildConfig: {},
   makers: [
-    // 1. DELETE or COMMENT OUT this section to stop the crash
-    // {
-    //   name: "@electron-forge/maker-squirrel",
-    //   config: {
-    //     name: "file_filter_copier",
-    //     setupIcon: nodePath.join(
-    //       __dirname,
-    //       "src",
-    //       "assets",
-    //       "icons",
-    //       "win",
-    //       "icon.ico"
-    //     ),
-    //   },
-    // },
-
-    // 2. UPDATE this section to include "win32"
+    // -----------------------------------------------------------
+    // 1. SQUIRREL (Standard Windows Setup.exe)
+    // -----------------------------------------------------------
     {
-      name: "@electron-forge/maker-zip",
-      platforms: ["darwin", "win32"], // <--- This enables ZIP for Windows
+      name: "@electron-forge/maker-squirrel",
+      config: {
+        // Internal name (keep it simple, no spaces)
+        name: "FileFilterCopier",
+
+        // The name of the installer file the user will see
+        setupExe: "FileFilterCopierSetup.exe",
+
+        // Local path to icon (Used for the Setup.exe file itself)
+        setupIcon: nodePath.join(
+          __dirname,
+          "src",
+          "assets",
+          "icons",
+          "win",
+          "icon.ico"
+        ),
+
+        // Remote URL (Used for "Add/Remove Programs" in Control Panel)
+        // I converted your link to the direct "raw" format which is safer for build tools
+        iconUrl:
+          "https://raw.githubusercontent.com/dusky101/file-filter-copier-assets/main/assets/icons/win/icon.ico",
+
+        // Skip MSI creation to speed up build
+        noMsi: true,
+      },
     },
 
-    // ... leave the rest (DMG, Deb, RPM) alone ...
+    // -----------------------------------------------------------
+    // 2. ZIP MAKER (Portable Version)
+    // -----------------------------------------------------------
+    {
+      name: "@electron-forge/maker-zip",
+      platforms: ["darwin", "win32"],
+    },
+
+    // -----------------------------------------------------------
+    // 3. MAC & LINUX MAKERS
+    // -----------------------------------------------------------
     {
       name: "@electron-forge/maker-dmg",
       config: {
@@ -136,7 +156,6 @@ module.exports = {
       [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
       [FuseV1Options.EnableNodeCliInspectArguments]: false,
       [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
-      // CRITICAL FIX: Must be false when asar is false
       [FuseV1Options.OnlyLoadAppFromAsar]: false,
     }),
   ],
