@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { X, Save, Trash2, Download } from "lucide-react";
+import { Download, Trash2, CheckCircle2 } from "lucide-react";
 import {
   listPresets,
   loadPreset as apiLoadPreset,
@@ -11,7 +11,16 @@ import {
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
 
-const PresetManagerPanel = ({ isOpen, onClose }) => {
+// UI Components
+import {
+  Dialog,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../../ui/dialog";
+import { Button } from "../../ui/button";
+
+const PresetManagerPanel = ({ isOpen, onClose, onPresetLoaded }) => {
   const [presets, setPresets] = useState([]);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(false);
@@ -22,10 +31,8 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
     setDefaultPresetName,
     setActivePresetName,
     defaultPresetName,
-    getNextOutputNameForPreset, // <-- add this
+    getNextOutputNameForPreset,
   } = useSettingsStore();
-
-  const resetToBlank = useFilterStore((s) => s.resetToBlank);
 
   const refresh = async () => {
     setLoading(true);
@@ -57,15 +64,6 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
     if (isOpen) refresh();
   }, [isOpen]);
 
-  // Esc closes panel
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape" && isOpen) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
-
   const loadPreset = async () => {
     if (!selected) return;
     setLoading(true);
@@ -89,13 +87,17 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
         config.destination = dest || "";
         config.output_folder_name = nextOut;
         loadPresetConfig(config);
+        setActivePresetName(selected || null);
+
         onClose?.();
-        alert(
-          `✅ Loaded preset \"${selected}\"\nOutput folder set to: ${nextOut}`
-        );
+
+        // REPLACED: alert() with the enhanced dialog callback
+        if (onPresetLoaded) {
+          onPresetLoaded(selected, nextOut);
+        }
       } else setError(res.error || "Failed to load preset");
     } catch (e) {
-      setError(e.message || "Failed to load preset");
+      setError(String(e?.message || e));
     } finally {
       setLoading(false);
     }
@@ -104,7 +106,7 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
   const deletePreset = async () => {
     if (!selected) return;
     const ok = window.confirm(
-      `Delete preset \"${selected}\"? This cannot be undone.`
+      `Delete preset "${selected}"? This cannot be undone.`
     );
     if (!ok) return;
     setLoading(true);
@@ -124,51 +126,6 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
     }
   };
 
-  const makeDefault = async () => {
-    if (!selected) return;
-    setDefaultPresetName(selected);
-    alert(
-      `✅ Default preset set to \"${selected}\". It will auto-load on startup.`
-    );
-  };
-
-  // After successful load
-  const handleLoad = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const res = await apiLoadPreset(selected);
-      if (res.success) {
-        const config = { ...(res.data?.config || res.data) }; // support both shapes
-        // Normalize source/destination/output
-        const src =
-          config.folder || config.sourceFolder || config.source_folder;
-        const dest =
-          config.destination ||
-          config.destinationFolder ||
-          config.destination_folder;
-        const outName =
-          config.output_folder_name || config.outputFolderName || "Output";
-        // Compute next output folder name for this preset
-        const nextOut = getNextOutputNameForPreset(selected, outName);
-        config.folder = src || "";
-        config.destination = dest || "";
-        config.output_folder_name = nextOut;
-        loadPresetConfig(config);
-        setActivePresetName(selected || null);
-        onClose?.();
-        alert(
-          `✅ Loaded preset \"${selected}\"\nOutput folder set to: ${nextOut}`
-        );
-      } else setError(res.error || "Failed to load preset");
-    } catch (e) {
-      setError(String(e?.message || e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Make Default
   const handleMakeDefault = async () => {
     if (!selected) return;
     setLoading(true);
@@ -178,7 +135,6 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
       if (res?.success) {
         const cur = await getDefaultPreset();
         setDefaultPresetName(cur?.default ?? selected);
-        // keep panel open; optionally toast instead of alert
       } else {
         setError(res?.error || "Failed to set default");
       }
@@ -187,14 +143,11 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
     }
   };
 
-  // Clear Default
   const handleClearDefault = async () => {
     setLoading(true);
     try {
       await clearDefaultPreset();
       setDefaultPresetName(null);
-      // optional: also clear the active name if you reset the filters to blank
-      // setActivePresetName(null);
     } finally {
       setLoading(false);
     }
@@ -203,121 +156,125 @@ const PresetManagerPanel = ({ isOpen, onClose }) => {
   // On open, fetch default to sync
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await getDefaultPreset();
-        if (alive) setDefaultPresetName(res?.default ?? null);
-      } catch {}
-    })();
+    if (isOpen) {
+      (async () => {
+        try {
+          const res = await getDefaultPreset();
+          if (alive) setDefaultPresetName(res?.default ?? null);
+        } catch {}
+      })();
+    }
     return () => {
       alive = false;
     };
-  }, [setDefaultPresetName]);
-
-  if (!isOpen) return null;
+  }, [isOpen, setDefaultPresetName]);
 
   return (
-    <>
-      <div
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
-        onClick={onClose}
-      />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 pointer-events-auto">
-          <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between z-10">
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
-              Load Preset
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-              aria-label="Close"
-            >
-              <X className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-            </button>
-          </div>
-          <div className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Saved presets
-              </label>
-              <div className="flex gap-2">
-                <select
-                  value={selected}
-                  onChange={(e) => setSelected(e.target.value)}
-                  className="flex-1 px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                >
-                  {presets.length === 0 && (
-                    <option value="" disabled>
-                      (No presets saved)
-                    </option>
-                  )}
-                  {presets.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={refresh}
-                  className="px-3 py-3 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  title="Refresh list"
-                >
-                  <Download className="w-5 h-5" />
-                </button>
-              </div>
-              {/* Default preset label */}
-              <div className="text-sm text-slate-400">
-                Default preset:{" "}
-                {defaultPresetName ? (
-                  <strong>{defaultPresetName}</strong>
-                ) : (
-                  <em>None</em>
-                )}
-              </div>
-            </div>
+    <Dialog open={isOpen} onClose={onClose} className="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>Load Preset</DialogTitle>
+      </DialogHeader>
 
-            {error && (
-              <div className="text-sm text-red-600 dark:text-red-400">
-                {error}
-              </div>
+      <div className="space-y-6 py-4">
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+            Select a Preset
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+            >
+              {presets.length === 0 && (
+                <option value="" disabled>
+                  (No presets saved)
+                </option>
+              )}
+              {presets.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <Button
+              variant="outline"
+              size="default" // Using default size but overriding padding for square look
+              onClick={refresh}
+              title="Refresh list"
+              className="px-3"
+            >
+              <Download className="w-5 h-5" />
+            </Button>
+          </div>
+
+          {/* Default preset status indicator */}
+          <div className="mt-2 text-sm text-slate-500 flex items-center gap-2">
+            <span>Default on startup:</span>
+            {defaultPresetName ? (
+              <span className="font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {defaultPresetName}
+              </span>
+            ) : (
+              <span className="italic text-slate-400">None</span>
             )}
           </div>
-          <div className="sticky bottom-0 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between">
-            <button
-              onClick={deletePreset}
-              disabled={!selected || loading}
-              className="px-4 py-2 text-sm font-medium text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-700 disabled:opacity-50"
-            >
-              <Trash2 className="w-4 h-4 inline-block mr-2" /> Delete
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleMakeDefault}
-                disabled={!selected || loading}
-                className="px-4 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                Make Default
-              </button>
-              <button
-                onClick={handleLoad}
-                disabled={!selected || loading || presets.length === 0}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
-              >
-                Load
-              </button>
-              <button
-                onClick={handleClearDefault}
-                className="px-4 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-800"
-                title="Clear default preset and revert to blank filters"
-              >
-                Clear Default
-              </button>
-            </div>
-          </div>
         </div>
+
+        {error && (
+          <div className="p-3 text-sm bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg border border-red-100 dark:border-red-800">
+            {error}
+          </div>
+        )}
       </div>
-    </>
+
+      {/* Footer Actions */}
+      <DialogFooter className="sm:justify-between gap-y-2">
+        {/* Left Side: Delete */}
+        <div className="flex justify-start">
+          <Button
+            variant="outline"
+            onClick={deletePreset}
+            disabled={!selected || loading}
+            className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20 dark:border-red-900/50"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </Button>
+        </div>
+
+        {/* Right Side: Actions */}
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button
+            variant="outline"
+            onClick={handleClearDefault}
+            disabled={!defaultPresetName || loading}
+            title="Clear default preset"
+          >
+            Clear Default
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={handleMakeDefault}
+            disabled={!selected || loading}
+          >
+            Make Default
+          </Button>
+
+          <Button
+            variant="default"
+            onClick={loadPreset}
+            disabled={!selected || loading || presets.length === 0}
+            className="px-6 shadow-md hover:shadow-lg"
+          >
+            Load Preset
+          </Button>
+        </div>
+      </DialogFooter>
+    </Dialog>
   );
 };
 
