@@ -175,24 +175,31 @@ TYPE_GROUPS = {
     ],
 
     # UI-aligned groups
-    "Documents & Office": [
-        "Text Documents", "Spreadsheets", "Presentations"
-    ],
-    "Media Types": [
-        "Images", "Audio", "Video"
-    ],
-    "Development Types": [
-        "Code", "Web", "Config", "Scripts"
-    ],
-    "Archives": [
-        "Compressed"
-    ],
-
-    # Legacy/general groups (kept)
-    "Media & Design": [
-        "Images", "Media", "Design", "Assets"
-    ],
-    "System & Scripts": [
-        "Scripts", "Executables", "Archives", "Security"
-    ]
+    "Documents": ["Text Documents", "Spreadsheets", "Presentations"],
+    "Media": ["Images", "Audio", "Video"],
+    "Development": ["Code", "Web", "Config", "Scripts"],
+    "System": ["Compressed", "Executables", "Fonts", "Database"]
 }
+
+def get_file_label_from_name(filename: str) -> str:
+    """
+    Returns a short label (extension) from a filename.
+    """
+    if "." not in filename or filename.startswith("."):
+        return "FILE"
+    return filename.split(".")[-1].upper()
+
+def get_file_category(filename: str) -> str:
+    """
+    Determines the semantic category of a file based on its extension.
+    Used for the 'Organize by Type' copy feature.
+    """
+    lower_name = filename.lower()
+    
+    # Check strict extension match first
+    for category, extensions in FILE_TYPE_PATTERNS.items():
+        for ext in extensions:
+            if lower_name.endswith(ext):
+                return category
+    
+    return None

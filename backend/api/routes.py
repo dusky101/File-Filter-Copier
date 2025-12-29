@@ -14,7 +14,8 @@ import fnmatch
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from core.filters import filter_files, SIZE_FILTERS  # noqa: F401
-from core.file_ops import copy_files_and_log  # noqa: F401
+# UPDATED: Import the new copy_files function instead of copy_files_and_log
+from core.file_ops import copy_files  
 from core.duplicate_checker import detect_duplicates  # noqa: F401
 from core.utils import format_size, format_timestamp  # noqa: F401
 from features.extension_filter import filter_by_extension  # noqa: F401
@@ -376,21 +377,6 @@ async def scan_files(request: ScanRequest, http_req: Request):
 async def list_folders(path: str):
     """
     List all subdirectories in the given path (non-recursive, one level only).
-    
-    Args:
-        path: Source folder path to scan for subdirectories
-        
-    Returns:
-        List of folder names (not full paths, just names)
-        
-    Example:
-        GET /api/folders?path=/Users/marc/Documents
-        Returns: {
-            "success": true,
-            "path": "/Users/marc/Documents",
-            "folders": ["Projects", "Images", "Archive", ...],
-            "count": 15
-        }
     """
     try:
         # Validate path exists
@@ -430,42 +416,49 @@ async def list_folders(path: str):
         raise HTTPException(status_code=500, detail=f"Failed to list folders: {str(e)}")
 
 
-
 @router.post("/copy", response_model=CopyResponse)
-async def copy_files(request: CopyRequest):
+async def copy_files_endpoint(request: CopyRequest):
     """
     Copy filtered files to a destination folder.
-    
-    This endpoint performs the actual file copy operation, creating the output
-    folder and generating a log file with the operation details.
+    Uses the new 'structure' and 'source_folder' parameters.
     """
     try:
         # Validate destination directory exists
         if not os.path.exists(request.destination):
             raise HTTPException(status_code=404, detail=f"Destination not found: {request.destination}")
 
-        # FIXED: Create output folder with CUSTOM NAME from request
-        # This was the bug - it wasn't using request.output_folder
-        output_path = os.path.join(request.destination, request.output_folder)
-        os.makedirs(output_path, exist_ok=True)
-
-        # Prepare file tuples (path, semantic_type)
-        # For now, we don't have semantic types in the copy request, so we'll use None
-        file_tuples = [(path, None) for path in request.files]
-
-        # Perform copy operation
-        log_file_path = copy_files_and_log(file_tuples, output_path)
-
-        return CopyResponse(
-            success=True,
-            copied_count=len(request.files),
-            output_path=output_path,
-            log_file=log_file_path
+        # UPDATED: Call copy_files with the new signature
+        result = copy_files(
+            file_paths=request.files,
+            destination=request.destination,
+            output_folder=request.output_folder,
+            structure=request.structure,
+            source_folder=request.source_folder
         )
+
+        if result["success"]:
+            data = result["data"]
+            return CopyResponse(
+                success=True,
+                copied_count=data["copied_count"],
+                output_path=data["output_path"],
+                log_file=data.get("log_file"),
+                error=None
+            )
+        else:
+            return CopyResponse(
+                success=False,
+                copied_count=0,
+                output_path="",
+                log_file=None,
+                error=result.get("error", "Unknown error")
+            )
 
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return CopyResponse(
             success=False,
             copied_count=0,

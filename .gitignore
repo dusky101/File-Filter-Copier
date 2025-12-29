@@ -11,6 +11,7 @@ Icon?
 .Trashes
 generate_icns.py
 macos_icon_padding.py
+
 # Editor/IDE
 .vscode/
 .idea/
@@ -37,7 +38,6 @@ node_modules/
 .parcel-cache/
 
 # Vite / Frontend build output
-# Ignore general dist for frontend; we'll re-include backend/dist below
 dist/
 out/
 .vite/
@@ -45,6 +45,7 @@ out/
 # Electron Forge / packaging output
 make/
 release/
+Installers/
 
 # Test coverage
 coverage/
@@ -79,38 +80,17 @@ env/
 
 # Python packaging & build artifacts
 build/
-# If you publish Python wheels/sdists locally
 .eggs/
 *.egg-info/
 pip-wheel-metadata/
-
-# NOTE: dist/ is used by both JS bundlers and PyInstaller
-# We ignore dist/ globally above but explicitly re-include backend dist below.
-
-# PyInstaller artifacts
-# PyInstaller uses build/ and dist/. We IGNORE build/, but we WANT backend/dist tracked.
-# Do NOT ignore *.spec because this project tracks file-filter-backend.spec
-# *.spec  <-- intentionally NOT ignored
 
 # ------------------------------
 # Backend-specific overrides
 # ------------------------------
 
-/File-Filter-Copier/backend/build/
-# Fully ignore backend/dist (no re-includes)
- /File-Filter-Copier/backend/dist/
-
-# Keep backend __pycache__ tracked (optional)
-!/File-Filter-Copier/backend/__pycache__/
-!/File-Filter-Copier/backend/__pycache__/**
-!/File-Filter-Copier/backend/**/__pycache__/
-!/File-Filter-Copier/backend/**/__pycache__/**
-
-# ------------------------------
-# Backend generated folders (clarity)
-# ------------------------------
-# Keep ignoring any JS/Python build outputs elsewhere by default,
-# while allowing backend/dist and backend/__pycache__ to be committed.
+# Ignore backend build artifacts
+backend/build/
+backend/dist/
 
 # Temporary files
 .tmp/

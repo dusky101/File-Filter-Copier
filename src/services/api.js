@@ -1,21 +1,20 @@
 /**
  * API Service for File Filter Copier
- * 
- * This module provides a clean interface for communicating with the FastAPI backend.
+ * * This module provides a clean interface for communicating with the FastAPI backend.
  * All API calls are centralized here for easy maintenance and error handling.
  */
 
-import axios from 'axios';
-import useSettingsStore from '../stores/useSettingsStore';
+import axios from "axios";
+import useSettingsStore from "../stores/useSettingsStore";
 
-const API_BASE_URL = 'http://localhost:8000/api';
+const API_BASE_URL = "http://localhost:8000/api";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   // default to no timeout; we will provide per-request timeouts from settings
   timeout: 0,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
@@ -24,7 +23,7 @@ const getTimeoutFromSettings = (fallback = 300000) => {
     const state = useSettingsStore.getState();
     if (!state) return fallback;
     const t = state.getRequestTimeout ? state.getRequestTimeout() : fallback;
-    return typeof t === 'number' ? t : fallback;
+    return typeof t === "number" ? t : fallback;
   } catch {
     return fallback;
   }
@@ -33,11 +32,13 @@ const getTimeoutFromSettings = (fallback = 300000) => {
 // Request interceptor for debugging
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(`🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(
+      `🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`
+    );
     return config;
   },
   (error) => {
-    console.error('🔴 API Request Error:', error);
+    console.error("🔴 API Request Error:", error);
     return Promise.reject(error);
   }
 );
@@ -49,7 +50,10 @@ apiClient.interceptors.response.use(
     return response;
   },
   (error) => {
-    console.error('🔴 API Response Error:', error.response?.data || error.message);
+    console.error(
+      "🔴 API Response Error:",
+      error.response?.data || error.message
+    );
     return Promise.reject(error);
   }
 );
@@ -60,24 +64,26 @@ apiClient.interceptors.response.use(
 
 /**
  * List all subdirectories in a given folder path
- * 
- * @param {string} folderPath - Path to the source folder
+ * * @param {string} folderPath - Path to the source folder
  * @returns {Promise<Object>} Result with folder list
  */
 export const listFolders = async (folderPath) => {
   try {
-    const response = await apiClient.get('/folders', {
-      params: { path: folderPath }
+    const response = await apiClient.get("/folders", {
+      params: { path: folderPath },
     });
 
     return {
       success: true,
-      data: response.data
+      data: response.data,
     };
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to list folders',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to list folders",
     };
   }
 };
@@ -101,15 +107,20 @@ export const scanFiles = async (filters, options = {}) => {
   if (progressId) headers["x-progress-id"] = progressId;
 
   const effectiveTimeout =
-    typeof timeout === "number"
-      ? timeout
-      : getTimeoutFromSettings(0); // 0 = no timeout if disabled in settings
+    typeof timeout === "number" ? timeout : getTimeoutFromSettings(0); // 0 = no timeout if disabled in settings
 
-  const res = await apiClient.post("/scan", filters, {
-    headers,
-    timeout: effectiveTimeout,
-  });
-  return res.data;
+  try {
+    const res = await apiClient.post("/scan", filters, {
+      headers,
+      timeout: effectiveTimeout,
+    });
+    return res.data;
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.detail || error.message || "Scan failed",
+    };
+  }
 };
 
 /**
@@ -117,8 +128,12 @@ export const scanFiles = async (filters, options = {}) => {
  * @returns {Promise<{success:boolean, data:{progress_id:string}}>}
  */
 export const startProgress = async () => {
-  const res = await apiClient.post("/progress/start");
-  return { success: true, data: res.data };
+  try {
+    const res = await apiClient.post("/progress/start");
+    return { success: true, data: res.data };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 };
 
 // ============================================================
@@ -127,21 +142,29 @@ export const startProgress = async () => {
 
 /**
  * Copy filtered files to a destination folder
- * 
- * @param {Object} copyRequest - Copy operation details
+ * * @param {Object} copyRequest - Copy operation details
  * @param {Array<string>} copyRequest.files - List of file paths to copy
  * @param {string} copyRequest.outputFolder - Output folder name
  * @param {string} copyRequest.destination - Destination parent directory
+ * @param {string} [copyRequest.structure] - Organisation structure (flat, date, type, preserve)
+ * @param {string} [copyRequest.source_folder] - Root source folder (needed for 'preserve')
  * @returns {Promise<Object>} Copy operation result
  */
 export const copyFiles = async (copyRequest) => {
   try {
     const timeout = getTimeoutFromSettings();
-    const response = await apiClient.post('/copy', {
-      files: copyRequest.files || [],
-      output_folder: copyRequest.outputFolder || 'FilteredFiles',
-      destination: copyRequest.destination || '',
-    }, { timeout });
+    const response = await apiClient.post(
+      "/copy",
+      {
+        files: copyRequest.files || [],
+        output_folder: copyRequest.outputFolder || "FilteredFiles",
+        destination: copyRequest.destination || "",
+        // ✅ ADDED: Pass structure and source_folder to backend
+        structure: copyRequest.structure || "flat",
+        source_folder: copyRequest.source_folder || null,
+      },
+      { timeout }
+    );
 
     return {
       success: true,
@@ -150,7 +173,10 @@ export const copyFiles = async (copyRequest) => {
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Copy operation failed',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Copy operation failed",
     };
   }
 };
@@ -161,27 +187,28 @@ export const copyFiles = async (copyRequest) => {
 
 /**
  * Save a filter configuration as a preset
- * 
- * @param {string} name - Preset name
+ * * @param {string} name - Preset name
  * @param {Object} config - Filter configuration to save
  * @returns {Promise<Object>} Save operation result
  */
 export const savePreset = async (name, config) => {
   try {
-    const response = await apiClient.post('/presets/save', { name, config });
+    const response = await apiClient.post("/presets/save", { name, config });
     return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to save preset',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to save preset",
     };
   }
 };
 
 /**
  * Load a preset by name
- * 
- * @param {string} name - Preset name
+ * * @param {string} name - Preset name
  * @returns {Promise<Object>} Preset configuration
  */
 export const loadPreset = async (name) => {
@@ -191,32 +218,36 @@ export const loadPreset = async (name) => {
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to load preset',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to load preset",
     };
   }
 };
 
 /**
  * List all available presets
- * 
- * @returns {Promise<Object>} List of preset names
+ * * @returns {Promise<Object>} List of preset names
  */
 export const listPresets = async () => {
   try {
-    const response = await apiClient.get('/presets/list');
+    const response = await apiClient.get("/presets/list");
     return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to list presets',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to list presets",
     };
   }
 };
 
 /**
  * Delete a preset by name
- * 
- * @param {string} name - Preset name to delete
+ * * @param {string} name - Preset name to delete
  * @returns {Promise<Object>} Delete operation result
  */
 export const deletePreset = async (name) => {
@@ -226,35 +257,53 @@ export const deletePreset = async (name) => {
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Failed to delete preset',
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to delete preset",
     };
   }
 };
 
 /**
  * Get the default preset configuration
- * 
- * @returns {Promise<Object>} Default preset configuration
+ * * @returns {Promise<Object>} Default preset configuration
  */
-export const getDefaultPreset = async () =>
-  (await apiClient.get('/presets/default')).data;
+export const getDefaultPreset = async () => {
+  try {
+    const response = await apiClient.get("/presets/default");
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
 
 /**
  * Set the default preset by name
- * 
- * @param {string} name - Preset name to set as default
+ * * @param {string} name - Preset name to set as default
  * @returns {Promise<Object>} Set operation result
  */
-export const setDefaultPreset = async (name) =>
-  (await apiClient.post('/presets/default', { name })).data;
+export const setDefaultPreset = async (name) => {
+  try {
+    const response = await apiClient.post("/presets/default", { name });
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
 
 /**
  * Clear the default preset
- * 
- * @returns {Promise<Object>} Clear operation result
+ * * @returns {Promise<Object>} Clear operation result
  */
-export const clearDefaultPreset = async () =>
-  (await apiClient.delete('/presets/default')).data;
+export const clearDefaultPreset = async () => {
+  try {
+    const response = await apiClient.delete("/presets/default");
+    return response.data;
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
 
 // ============================================================
 // Health Check API
@@ -262,17 +311,17 @@ export const clearDefaultPreset = async () =>
 
 /**
  * Check if the backend is running and healthy
- * 
- * @returns {Promise<Object>} Health check result
+ * * @returns {Promise<Object>} Health check result
  */
 export const healthCheck = async () => {
   try {
-    const response = await apiClient.get('/health');
+    const response = await apiClient.get("/health");
     return { success: true, data: response.data };
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.detail || error.message || 'Health check failed',
+      error:
+        error.response?.data?.detail || error.message || "Health check failed",
     };
   }
 };
@@ -283,50 +332,47 @@ export const healthCheck = async () => {
 
 /**
  * Parse comma-separated extensions into an array
- * 
- * @param {string} extensionString - Comma-separated extensions
+ * * @param {string} extensionString - Comma-separated extensions
  * @returns {Array<string>|null} Array of extensions or null if empty
  */
 export const parseExtensions = (extensionString) => {
   if (!extensionString || !extensionString.trim()) return null;
-  
+
   return extensionString
-    .split(',')
-    .map(ext => ext.trim())
-    .filter(ext => ext.length > 0)
-    .map(ext => ext.startsWith('.') ? ext : `.${ext}`);
+    .split(",")
+    .map((ext) => ext.trim())
+    .filter((ext) => ext.length > 0)
+    .map((ext) => (ext.startsWith(".") ? ext : `.${ext}`));
 };
 
 /**
  * Format file size in human-readable format
- * 
- * @param {number} bytes - File size in bytes
+ * * @param {number} bytes - File size in bytes
  * @returns {string} Formatted size (e.g., "1.5 MB")
  */
 export const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B';
-  
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  if (bytes === 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
   const k = 1024;
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${units[i]}`;
 };
 
 /**
  * Format timestamp in human-readable format
- * 
- * @param {number} timestamp - Unix timestamp
+ * * @param {number} timestamp - Unix timestamp
  * @returns {string} Formatted date and time
  */
 export const formatTimestamp = (timestamp) => {
   const date = new Date(timestamp * 1000);
-  return date.toLocaleString('en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+  return date.toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 };
 
