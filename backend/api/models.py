@@ -81,13 +81,18 @@ class CopyRequest(BaseModel):
     files: List[str] = Field(..., description="List of file paths to copy")
     output_folder: str = Field(..., description="Output folder name")
     destination: str = Field(..., description="Destination parent directory")
+    # NEW: Structure options
+    structure: str = Field(default="flat", description="Structure mode: flat, date, type, preserve")
+    source_folder: Optional[str] = Field(default=None, description="Original source folder (needed for preserve mode)")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "files": ["/Users/marc/Documents/file1.py", "/Users/marc/Documents/file2.js"],
                 "output_folder": "FilteredFiles",
-                "destination": "/Users/marc/Downloads"
+                "destination": "/Users/marc/Downloads",
+                "structure": "flat",
+                "source_folder": "/Users/marc/Documents"
             }
         }
 

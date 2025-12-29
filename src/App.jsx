@@ -13,8 +13,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
-  FileText,
   FolderCheck,
+  FolderTree, // Imported for the new section icon
 } from "lucide-react";
 import Header from "./components/layout/Header";
 import SettingsPanel from "./components/layout/SettingsPanel";
@@ -54,25 +54,20 @@ function App() {
   const [copyResult, setCopyResult] = useState(null); // { count, output_path }
   const [errorState, setErrorState] = useState(null); // { title, message }
   const [showPresetDialog, setShowPresetDialog] = useState(false);
-  // NEW: State for the enhanced Preset Loaded dialog
   const [presetSuccess, setPresetSuccess] = useState(null); // { name, output }
 
   // progress modal state
   const [progressState, setProgressState] = useState({ open: false, id: null });
 
-  // --- NEW: Listen for "User Guide" menu click from Electron ---
+  // --- Listen for "User Guide" menu click from Electron ---
   useEffect(() => {
-    // Check if running in Electron environment
     if (window.electron && window.electron.onOpenHelp) {
       const removeListener = window.electron.onOpenHelp(() => {
-        console.log("Opening Help from Menu Bar");
         setShowInstructions(true);
       });
-      // Cleanup listener when component unmounts
       return () => removeListener();
     }
   }, []);
-  // -------------------------------------------------------------
 
   const {
     sourceFolder,
@@ -91,6 +86,9 @@ function App() {
     customExcludedFolders,
     deepScan,
     deepScanTerms,
+    // Destructure copy settings here
+    copyStructure,
+    setCopyStructure,
   } = useFilterStore();
 
   const {
@@ -133,14 +131,11 @@ function App() {
     return c;
   })();
 
-  /**
-   * Check backend health on mount
-   */
   useEffect(() => {
     checkBackendHealth();
   }, []);
 
-  // Load default preset on start if configured
+  // Load default preset on start
   useEffect(() => {
     const loadDefault = async () => {
       if (!defaultPresetName) return;
@@ -167,9 +162,6 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * Check if FastAPI backend is running
-   */
   const checkBackendHealth = async () => {
     try {
       const result = await healthCheck();
@@ -179,9 +171,6 @@ function App() {
     }
   };
 
-  /**
-   * Validate required fields
-   */
   const validateInputs = () => {
     if (!sourceFolder || !sourceFolder.trim()) {
       setErrorState({
@@ -211,7 +200,6 @@ function App() {
     return true;
   };
 
-  // Helper: run scan with inline progress bar
   const runScanWithOptionalProgress = async (config) => {
     const hasTerms =
       Array.isArray(config.deep_scan_terms) &&
@@ -238,9 +226,6 @@ function App() {
     }
   };
 
-  /**
-   * Handle preview/scan operation
-   */
   const handlePreview = async () => {
     if (!validateInputs()) return;
 
@@ -278,9 +263,6 @@ function App() {
     }
   };
 
-  /**
-   * Handle copy operation
-   */
   const handleCopy = async () => {
     if (!validateInputs()) return;
 
@@ -308,6 +290,8 @@ function App() {
         files: filePaths,
         destination: destinationFolder,
         outputFolder: outputFolderName,
+        structure: config.structure || "flat",
+        source_folder: sourceFolder,
       };
 
       const copyRes = await copyFiles(copyRequest);
@@ -372,15 +356,14 @@ function App() {
     return false;
   };
 
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
+  // Fixed: Correctly update state when event is fired
   useEffect(() => {
-    const open = () => setSettingsOpen(true);
+    const open = () => setShowSettings(true);
     window.addEventListener("open-settings", open);
     return () => window.removeEventListener("open-settings", open);
   }, []);
 
   return (
-    // FIX: bg-gradient-to-br -> bg-linear-to-br
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
@@ -395,10 +378,42 @@ function App() {
           onClose={() => setShowSettings(false)}
         />
 
-        {/* Main Configuration Section */}
+        {/* Main Configuration Section (Source/Dest/Output) */}
         <MainConfigSection
           onOpenPresetManager={() => setShowPresetManager(true)}
         />
+
+        {/* --- GLOBAL COPY ORGANISATION --- */}
+        {/* Placed here so it controls both main Copy and "Copy Selected" */}
+        <div className="mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+              <FolderTree className="w-4 h-4 text-blue-500" />
+              Folder Structure
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Define how subfolders are created in the output location.
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={copyStructure}
+              onChange={(e) => setCopyStructure(e.target.value)}
+              className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            >
+              <option value="flat">Flat: No subfolders (All in one)</option>
+              <option value="date">
+                Date: Folders by Year/Month (e.g. 2024/12)
+              </option>
+              <option value="type">
+                Type: Folders by Category (e.g. Images/Code)
+              </option>
+              <option value="preserve">
+                Tree: Recreate original folder structure
+              </option>
+            </select>
+          </div>
+        </div>
 
         {/* Filters entrypoint */}
         <div className="mb-4">
@@ -417,7 +432,6 @@ function App() {
                   setFilterHubSection("quick");
                   setShowFilterHub(true);
                 }}
-                // FIX: bg-gradient-to-r -> bg-linear-to-r
                 className={`px-4 py-2 rounded-lg bg-linear-to-r from-blue-600 to-purple-600 text-white shadow hover:shadow-md ${animationsEnabled ? "transition-all hover:scale-105" : ""}`}
               >
                 Open Filters
@@ -429,7 +443,6 @@ function App() {
 
         {/* Dry Run Toggle */}
         <div className="mb-6">
-          {/* FIX: bg-gradient-to-r -> bg-linear-to-r */}
           <div className="flex items-center gap-3 p-4 bg-linear-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
             <label className="relative inline-flex items-center cursor-pointer">
               <input
@@ -438,7 +451,6 @@ function App() {
                 onChange={toggleDryRun}
                 className="sr-only peer"
               />
-              {/* FIX: after:top-[2px] -> after:top-0.5, after:left-[2px] -> after:left-0.5, peer-checked:bg-gradient-to-r -> peer-checked:bg-linear-to-r */}
               <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-linear-to-r peer-checked:from-blue-600 peer-checked:to-purple-600"></div>
             </label>
             <div className="flex-1">
@@ -457,7 +469,6 @@ function App() {
           <button
             onClick={handleRun}
             disabled={isRunDisabled()}
-            // FIX: bg-gradient-to-r -> bg-linear-to-r
             className={`
               flex-1 flex items-center justify-center gap-3 px-6 py-4
               bg-linear-to-r from-green-600 to-emerald-600 text-white 
@@ -483,7 +494,6 @@ function App() {
           <button
             onClick={handleSavePreset}
             disabled={isProcessing}
-            // FIX: bg-gradient-to-r -> bg-linear-to-r
             className={`
               px-6 py-4 bg-linear-to-r from-blue-600 to-purple-600 text-white 
               rounded-2xl shadow-xl hover:shadow-2xl font-semibold text-lg
@@ -517,7 +527,6 @@ function App() {
         />
 
         {/* Normal Search Progress Overlay */}
-        {/* We only show this if it's loading, AND we aren't showing the deep scan progress modal */}
         <SearchOverlay open={isLoading && !progressState.open} />
       </div>
 
@@ -538,7 +547,6 @@ function App() {
         }}
       />
 
-      {/* UPDATE: Pass the success handler to the manager */}
       <PresetManagerPanel
         isOpen={showPresetManager}
         onClose={() => setShowPresetManager(false)}
@@ -640,7 +648,7 @@ function App() {
         </div>
       </Dialog>
 
-      {/* 4. NEW: Preset Loaded Dialog */}
+      {/* 4. Preset Loaded Dialog */}
       <Dialog open={!!presetSuccess} onClose={() => setPresetSuccess(null)}>
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30 mb-4">

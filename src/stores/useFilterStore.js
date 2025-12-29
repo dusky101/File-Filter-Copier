@@ -1,350 +1,191 @@
 /**
  * Zustand Store for Filter State Management
- * Manages all filter configurations including size, extensions, file types, and exclusions
+ * Manages all filter configurations including size, extensions, file types, structure, and exclusions.
  */
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const initialState = {
-  // Minimal baseline — adjust to your store keys as needed
-  sourceFolder: "",
-  include_exts: [],
-  exclude_exts: [],
-  selected_types: [],
-  size_filter: "all",
-  time_filter: "none",
-  deep_scan: false,
-  deep_scan_terms: [],
-  deep_scan_mode: "OR",
-  follow_symlinks: false,
-  include_hidden: false,
-  max_depth: 0,
-  name_glob_include: [],
-  name_glob_exclude: [],
-  name_regex_include: "",
-  name_regex_exclude: "",
-  time_attribute: "mtime",
-  deep_scan_max_size_bytes: 0,
-  dryRun: true,
-};
-
 const useFilterStore = create(
   persist(
     (set, get) => ({
-      // Source and destination configuration
+      // --- Core Paths ---
       sourceFolder: "",
       destinationFolder: "",
-      outputFolderName: "",
+      outputFolderName: "Output",
 
-      // Dry run mode
+      // --- Main Toggles ---
       dryRun: true,
 
-      // Extension filters
+      // --- Basic Filters ---
       includeExtensions: "",
       excludeExtensions: "",
+      sizeFilter: "all", // all, small, medium, large, huge, custom:min-max
+      timeFilter: "none", // none, 1h, 24h, 7d, 30d, custom
 
-      // Size filter
-      sizeFilter: "all", // 'all', 'small', 'medium', 'large', 'huge'
-
-      // Time filter
-      timeFilter: "none",
-
-      // File type selection (semantic types)
+      // --- Selection Sets ---
       selectedFileTypes: new Set(),
-      // Project Type selection (semantic roles like Models, Views, Controllers)
       selectedProjectTypes: new Set(),
 
-      // Folder exclusions (default persistent exclusions)
+      // --- Exclusions ---
       excludedFolders: new Set([
         "node_modules",
-        "venv",
         ".git",
-        "__pycache__",
-        ".idea",
+        ".svn",
+        ".hg",
         "dist",
         "build",
+        "coverage",
+        ".next",
+        ".nuxt",
+        ".idea",
         ".vscode",
+        "__pycache__",
+        ".DS_Store",
+        "Thumbs.db",
       ]),
-
-      // Custom folder exclusions (temporary, session-only)
       customExcludedFolders: new Set(),
 
-      // Deep scan options
+      // --- Deep Scan ---
       deepScan: false,
-      deepScanTerms: [""],
+      deepScanTerms: [],
       deepScanMode: "any", // 'any' or 'all'
+      deepScanMaxSizeMB: 50,
 
-      // UI state
-      showAdvancedFilters: false,
-      showFileTypeSelector: false,
-      showFolderExclusions: false,
-      showDeepScan: false,
-      showCustomFolderModal: false,
-
-      // Advanced options
+      // --- Advanced Settings ---
       includeHidden: false,
       followSymlinks: false,
+      respectGitignore: true,
       maxDepth: 0, // 0 = unlimited
-      timeAttribute: "mtime", // 'mtime' | 'ctime' | 'atime'
-      respectGitignore: false,
+      timeAttribute: "mtime", // mtime, ctime, atime
+
+      // --- Matchers (Glob/Regex) ---
       nameGlobInclude: "",
       nameGlobExclude: "",
       nameRegexInclude: "",
       nameRegexExclude: "",
-      deepScanMaxSizeMB: 0,
 
-      // Actions: Source and Destination
-      setSourceFolder: (folder) => set({ sourceFolder: folder }),
-      setDestinationFolder: (folder) => set({ destinationFolder: folder }),
+      // --- Duplicates & Structure (New) ---
+      excludeDuplicates: false, // Moved from PreviewStore
+      copyStructure: "flat", // 'flat', 'date', 'type', 'preserve'
+
+      // =========================================
+      // ACTIONS
+      // =========================================
+
+      // Path Actions
+      setSourceFolder: (path) => set({ sourceFolder: path }),
+      setDestinationFolder: (path) => set({ destinationFolder: path }),
       setOutputFolderName: (name) => set({ outputFolderName: name }),
 
-      // Actions: Dry Run
-      setDryRun: (value) => set({ dryRun: value }),
+      // Toggle Actions
       toggleDryRun: () => set((state) => ({ dryRun: !state.dryRun })),
 
-      // Actions: Extensions
-      setIncludeExtensions: (exts) => set({ includeExtensions: exts }),
-      setExcludeExtensions: (exts) => set({ excludeExtensions: exts }),
-
-      // Actions: Size Filter
-      setSizeFilter: (size) => set({ sizeFilter: size }),
-
-      // Actions: Time Filter
+      // Filter Actions
+      setIncludeExtensions: (val) => set({ includeExtensions: val }),
+      setExcludeExtensions: (val) => set({ excludeExtensions: val }),
+      setSizeFilter: (val) => set({ sizeFilter: val }),
       setTimeFilter: (val) => set({ timeFilter: val }),
 
-      // Actions: File Types
-      addFileType: (type) =>
-        set((state) => ({
-          selectedFileTypes: new Set([...state.selectedFileTypes, type]),
-        })),
-
-      removeFileType: (type) =>
-        set((state) => {
-          const newTypes = new Set(state.selectedFileTypes);
-          newTypes.delete(type);
-          return { selectedFileTypes: newTypes };
-        }),
-
+      // File Types
       toggleFileType: (type) =>
         set((state) => {
-          const newTypes = new Set(state.selectedFileTypes);
-          if (newTypes.has(type)) {
-            newTypes.delete(type);
-          } else {
-            newTypes.add(type);
-          }
-          return { selectedFileTypes: newTypes };
+          const newSet = new Set(state.selectedFileTypes);
+          if (newSet.has(type)) newSet.delete(type);
+          else newSet.add(type);
+          return { selectedFileTypes: newSet };
         }),
-
+      setFileTypes: (types) => set({ selectedFileTypes: new Set(types) }),
       clearFileTypes: () => set({ selectedFileTypes: new Set() }),
 
-      setFileTypes: (types) => set({ selectedFileTypes: new Set(types) }),
-
-      // Actions: Project Types (semantic roles)
-      addProjectType: (type) =>
-        set((state) => ({
-          selectedProjectTypes: new Set([...state.selectedProjectTypes, type]),
-        })),
-
-      removeProjectType: (type) =>
-        set((state) => {
-          const newTypes = new Set(state.selectedProjectTypes);
-          newTypes.delete(type);
-          return { selectedProjectTypes: newTypes };
-        }),
-
+      // Project Types
       toggleProjectType: (type) =>
         set((state) => {
-          const newTypes = new Set(state.selectedProjectTypes);
-          if (newTypes.has(type)) newTypes.delete(type);
-          else newTypes.add(type);
-          return { selectedProjectTypes: newTypes };
+          const newSet = new Set(state.selectedProjectTypes);
+          if (newSet.has(type)) newSet.delete(type);
+          else newSet.add(type);
+          return { selectedProjectTypes: newSet };
         }),
-
       clearProjectTypes: () => set({ selectedProjectTypes: new Set() }),
 
-      setProjectTypes: (types) => set({ selectedProjectTypes: new Set(types) }),
-
-      // Actions: Default Folder Exclusions (persistent)
-      addExcludedFolder: (folder) =>
-        set((state) => ({
-          excludedFolders: new Set([...state.excludedFolders, folder]),
-        })),
-
-      removeExcludedFolder: (folder) =>
-        set((state) => {
-          const newFolders = new Set(state.excludedFolders);
-          newFolders.delete(folder);
-          return { excludedFolders: newFolders };
-        }),
-
+      // Folder Exclusions
       toggleExcludedFolder: (folder) =>
         set((state) => {
-          const newFolders = new Set(state.excludedFolders);
-          if (newFolders.has(folder)) {
-            newFolders.delete(folder);
-          } else {
-            newFolders.add(folder);
-          }
-          return { excludedFolders: newFolders };
+          const newSet = new Set(state.excludedFolders);
+          if (newSet.has(folder)) newSet.delete(folder);
+          else newSet.add(folder);
+          return { excludedFolders: newSet };
         }),
 
-      setExcludedFolders: (folders) =>
-        set({ excludedFolders: new Set(folders) }),
-
-      // Actions: Custom Folder Exclusions (temporary, session-only)
       addCustomExcludedFolder: (folder) =>
-        set((state) => ({
-          customExcludedFolders: new Set([
-            ...state.customExcludedFolders,
-            folder,
-          ]),
-        })),
+        set((state) => {
+          if (!folder) return {};
+          const newSet = new Set(state.customExcludedFolders);
+          newSet.add(folder);
+          return { customExcludedFolders: newSet };
+        }),
 
       removeCustomExcludedFolder: (folder) =>
         set((state) => {
-          const newFolders = new Set(state.customExcludedFolders);
-          newFolders.delete(folder);
-          return { customExcludedFolders: newFolders };
+          const newSet = new Set(state.customExcludedFolders);
+          newSet.delete(folder);
+          return { customExcludedFolders: newSet };
         }),
-
-      toggleCustomExcludedFolder: (folder) =>
-        set((state) => {
-          const newFolders = new Set(state.customExcludedFolders);
-          if (newFolders.has(folder)) {
-            newFolders.delete(folder);
-          } else {
-            newFolders.add(folder);
-          }
-          return { customExcludedFolders: newFolders };
-        }),
-
-      setCustomExcludedFolders: (folders) =>
-        set({ customExcludedFolders: new Set(folders) }),
 
       clearCustomExcludedFolders: () =>
         set({ customExcludedFolders: new Set() }),
 
-      // Actions: Deep Scan
-      setDeepScan: (value) => set({ deepScan: value }),
+      // Deep Scan Actions
+      setDeepScan: (val) => set({ deepScan: val }),
       setDeepScanTerms: (terms) => set({ deepScanTerms: terms }),
-      updateDeepScanTerm: (index, value) =>
-        set((state) => {
-          const newTerms = [...state.deepScanTerms];
-          newTerms[index] = value;
-          return { deepScanTerms: newTerms };
-        }),
-      addDeepScanTerm: () =>
-        set((state) => ({
-          deepScanTerms: [...state.deepScanTerms, ""],
-        })),
-      removeDeepScanTerm: (index) =>
-        set((state) => ({
-          deepScanTerms: state.deepScanTerms.filter((_, i) => i !== index),
-        })),
       setDeepScanMode: (mode) => set({ deepScanMode: mode }),
-      toggleDeepScan: () => set((state) => ({ deepScan: !state.deepScan })),
+      setDeepScanMaxSizeMB: (mb) => set({ deepScanMaxSizeMB: mb }),
 
-      // Actions: UI State
-      toggleAdvancedFilters: () =>
-        set((state) => ({ showAdvancedFilters: !state.showAdvancedFilters })),
+      // Advanced Actions
+      setIncludeHidden: (val) => set({ includeHidden: val }),
+      setFollowSymlinks: (val) => set({ followSymlinks: val }),
+      setRespectGitignore: (val) => set({ respectGitignore: val }),
+      setMaxDepth: (val) => set({ maxDepth: val }),
+      setTimeAttribute: (val) => set({ timeAttribute: val }),
 
-      setShowAdvancedFilters: (value) => set({ showAdvancedFilters: value }),
+      // Matcher Actions
+      setNameGlobInclude: (val) => set({ nameGlobInclude: val }),
+      setNameGlobExclude: (val) => set({ nameGlobExclude: val }),
+      setNameRegexInclude: (val) => set({ nameRegexInclude: val }),
+      setNameRegexExclude: (val) => set({ nameRegexExclude: val }),
 
-      toggleFileTypeSelector: () =>
-        set((state) => ({ showFileTypeSelector: !state.showFileTypeSelector })),
+      // Structure & Duplicates Actions
+      setExcludeDuplicates: (val) => set({ excludeDuplicates: val }),
+      setCopyStructure: (val) => set({ copyStructure: val }),
 
-      setShowFileTypeSelector: (value) => set({ showFileTypeSelector: value }),
-
-      toggleFolderExclusions: () =>
-        set((state) => ({ showFolderExclusions: !state.showFolderExclusions })),
-
-      setShowFolderExclusions: (value) => set({ showFolderExclusions: value }),
-
-      // UI: toggle visibility of the Deep Scan panel
-      toggleShowDeepScan: () =>
-        set((state) => ({ showDeepScan: !state.showDeepScan })),
-
-      setShowDeepScan: (value) => set({ showDeepScan: value }),
-
-      toggleCustomFolderModal: () =>
+      // Reset Actions
+      resetFilters: () =>
         set((state) => ({
-          showCustomFolderModal: !state.showCustomFolderModal,
+          includeExtensions: "",
+          excludeExtensions: "",
+          sizeFilter: "all",
+          timeFilter: "none",
+          selectedFileTypes: new Set(),
+          selectedProjectTypes: new Set(),
+          // Keep default excludedFolders, clear custom
+          customExcludedFolders: new Set(),
+          deepScan: false,
+          deepScanTerms: [],
+          deepScanMode: "any",
+          includeHidden: false,
+          followSymlinks: false,
+          respectGitignore: true,
+          maxDepth: 0,
+          timeAttribute: "mtime",
+          nameGlobInclude: "",
+          nameGlobExclude: "",
+          nameRegexInclude: "",
+          nameRegexExclude: "",
+          excludeDuplicates: false,
+          copyStructure: "flat",
         })),
 
-      setShowCustomFolderModal: (value) =>
-        set({ showCustomFolderModal: value }),
-
-      // Advanced setters
-      setIncludeHidden: (v) => set({ includeHidden: !!v }),
-      setFollowSymlinks: (v) => set({ followSymlinks: !!v }),
-      setMaxDepth: (v) => set({ maxDepth: Math.max(0, Number(v) || 0) }),
-      setTimeAttribute: (v) => set({ timeAttribute: v }),
-      setRespectGitignore: (v) => set({ respectGitignore: !!v }),
-      setNameGlobInclude: (s) => set({ nameGlobInclude: s }),
-      setNameGlobExclude: (s) => set({ nameGlobExclude: s }),
-      setNameRegexInclude: (s) => set({ nameRegexInclude: s }),
-      setNameRegexExclude: (s) => set({ nameRegexExclude: s }),
-      setDeepScanMaxSizeMB: (v) =>
-        set({ deepScanMaxSizeMB: Math.max(0, Number(v) || 0) }),
-
-      // Utility: Get filter configuration for API
-      getFilterConfig: () => {
-        const state = get();
-        const allExcludedFolders = new Set([
-          ...state.excludedFolders,
-          ...state.customExcludedFolders,
-        ]);
-        const splitList = (s) =>
-          (s || "")
-            .split(/\s*(?:,|\n)\s*/)
-            .map((x) => x.trim())
-            .filter(Boolean);
-
-        return {
-          folder: state.sourceFolder,
-          destination: state.destinationFolder,
-          output_folder_name: state.outputFolderName,
-          // --- UPDATED: Send dry_run to backend ---
-          dry_run: state.dryRun,
-          // -----------------------------------------
-          size_filter: state.sizeFilter,
-          time_filter: state.timeFilter,
-          selected_types: Array.from(state.selectedFileTypes || []),
-          project_types: Array.from(state.selectedProjectTypes || []),
-          deep_scan: !!state.deepScan,
-          deep_scan_terms: (state.deepScanTerms || []).filter((t) =>
-            (t || "").trim()
-          ),
-          deep_scan_mode: (state.deepScanMode || "any").toUpperCase(),
-          include_exts: (state.includeExtensions || "")
-            .split(",")
-            .map((e) => e.trim())
-            .filter(Boolean),
-          exclude_exts: (state.excludeExtensions || "")
-            .split(",")
-            .map((e) => e.trim())
-            .filter(Boolean),
-          excluded_folders: Array.from(allExcludedFolders),
-
-          // Advanced
-          follow_symlinks: !!state.followSymlinks,
-          include_hidden: !!state.includeHidden,
-          max_depth: Number(state.maxDepth) || 0,
-          time_attribute: state.timeAttribute || "mtime",
-          respect_gitignore: !!state.respectGitignore,
-          name_glob_include: splitList(state.nameGlobInclude),
-          name_glob_exclude: splitList(state.nameGlobExclude),
-          name_regex_include: state.nameRegexInclude || null,
-          name_regex_exclude: state.nameRegexExclude || null,
-          deep_scan_max_size_bytes:
-            Math.max(0, Number(state.deepScanMaxSizeMB) || 0) * 1024 * 1024,
-        };
-      },
-
-      // Utility: Reset all filters to default
-      resetFilters: () =>
+      resetToBlank: () =>
         set({
           includeExtensions: "",
           excludeExtensions: "",
@@ -352,129 +193,294 @@ const useFilterStore = create(
           timeFilter: "none",
           selectedFileTypes: new Set(),
           selectedProjectTypes: new Set(),
-          deepScan: false,
-          deepScanTerms: [""],
-          deepScanMode: "any",
-          excludedFolders: new Set([
-            "node_modules",
-            "venv",
-            ".git",
-            "__pycache__",
-            ".idea",
-            "dist",
-            "build",
-            ".vscode",
-          ]),
+          excludedFolders: new Set(), // Clears defaults too
           customExcludedFolders: new Set(),
-
-          // Advanced resets
+          deepScan: false,
+          deepScanTerms: [],
+          deepScanMode: "any",
           includeHidden: false,
           followSymlinks: false,
+          respectGitignore: true,
           maxDepth: 0,
           timeAttribute: "mtime",
-          respectGitignore: false,
           nameGlobInclude: "",
           nameGlobExclude: "",
           nameRegexInclude: "",
           nameRegexExclude: "",
-          deepScanMaxSizeMB: 0,
+          excludeDuplicates: false,
+          copyStructure: "flat",
         }),
 
-      // Utility: Load preset configuration
-      loadPresetConfig: (config) =>
-        set((state) => ({
-          // top-level I/O folders
-          sourceFolder: config.folder ?? state.sourceFolder,
-          destination: config.destination ?? state.destinationFolder,
-          outputFolderName: config.output_folder_name ?? state.outputFolderName,
-          // --- UPDATED: Load dry_run from preset (default to true) ---
-          dryRun: config.dry_run !== undefined ? config.dry_run : true,
-          // -----------------------------------------------------------
-          includeExtensions: Array.isArray(config.include_exts)
-            ? config.include_exts.join(", ")
-            : (config.includeExtensions ?? state.includeExtensions ?? ""),
-          excludeExtensions: Array.isArray(config.exclude_exts)
-            ? config.exclude_exts.join(", ")
-            : (config.excludeExtensions ?? state.excludeExtensions ?? ""),
-          sizeFilter: config.size_filter ?? state.sizeFilter ?? "all",
-          timeFilter: config.time_filter ?? state.timeFilter ?? "none",
+      // =========================================
+      // API PAYLOAD GENERATION
+      // =========================================
+      getFilterConfig: () => {
+        const s = get();
+        // Helper to split CSV strings
+        const splitCSV = (str) =>
+          str
+            ? str
+                .split(",")
+                .map((x) => x.trim())
+                .filter(Boolean)
+            : [];
+
+        // Parse Size
+        const { min: sizeMin, max: sizeMax } = parseSize(s.sizeFilter);
+
+        // Parse Time
+        const { min: timeMin, max: timeMax } = parseTime(
+          s.timeFilter,
+          s.timeAttribute
+        );
+
+        return {
+          // Core
+          folder: s.sourceFolder,
+          destination: s.destinationFolder,
+          output_folder_name: s.outputFolderName,
+
+          // Filters
+          include_exts: splitCSV(s.includeExtensions), // Maps to API 'include_exts'
+          exclude_exts: splitCSV(s.excludeExtensions), // Maps to API 'exclude_exts'
+          size_min: sizeMin,
+          size_max: sizeMax,
+          time_min: timeMin,
+          time_max: timeMax,
+          time_attribute: s.timeAttribute,
+
+          selected_types: Array.from(s.selectedFileTypes), // Maps to API 'selected_types'
+          project_types: Array.from(s.selectedProjectTypes),
+
+          // Combine defaults + custom for the API
+          excluded_folders: [
+            ...Array.from(s.excludedFolders),
+            ...Array.from(s.customExcludedFolders),
+          ],
+
+          // Deep Scan
+          deep_scan: s.deepScan,
+          deep_scan_terms: s.deepScanTerms,
+          deep_scan_mode: s.deepScanMode,
+          deep_scan_max_size_bytes: (s.deepScanMaxSizeMB || 50) * 1024 * 1024,
+
+          // Advanced
+          include_hidden: s.includeHidden,
+          follow_symlinks: s.followSymlinks,
+          respect_gitignore: s.respectGitignore,
+          max_depth:
+            typeof s.maxDepth === "string" ? parseInt(s.maxDepth) : s.maxDepth,
+
+          // Matchers (Send array if split, or null)
+          name_glob_include: splitCSV(s.nameGlobInclude),
+          name_glob_exclude: splitCSV(s.nameGlobExclude),
+          name_regex_include: s.nameRegexInclude || null,
+          name_regex_exclude: s.nameRegexExclude || null,
+
+          // New Fields
+          exclude_duplicates: s.excludeDuplicates,
+          structure: s.copyStructure,
+        };
+      },
+
+      // =========================================
+      // PRESET LOADING
+      // =========================================
+      loadPresetConfig: (config) => {
+        if (!config) return;
+
+        // Helpers to join arrays back to CSV
+        const joinCSV = (arr) => (Array.isArray(arr) ? arr.join(", ") : "");
+
+        // 1. Direct State Updates
+        set({
+          // Paths (if present in preset)
+          sourceFolder: config.folder || config.sourceFolder || "",
+          destinationFolder:
+            config.destination || config.destinationFolder || "",
+          outputFolderName:
+            config.output_folder_name || config.outputFolderName || "Output",
+
+          // Strings / Booleans
+          dryRun: config.dry_run ?? true,
+          deepScan: config.deep_scan ?? false,
+          deepScanMode: config.deep_scan_mode || "any",
+          deepScanMaxSizeMB: config.deep_scan_max_size_bytes
+            ? Math.round(config.deep_scan_max_size_bytes / (1024 * 1024))
+            : 50,
+
+          includeHidden: config.include_hidden ?? false,
+          followSymlinks: config.follow_symlinks ?? false,
+          respectGitignore: config.respect_gitignore ?? true,
+          maxDepth: config.max_depth || 0,
+          timeAttribute: config.time_attribute || "mtime",
+
+          nameRegexInclude: config.name_regex_include || "",
+          nameRegexExclude: config.name_regex_exclude || "",
+
+          // New Fields
+          excludeDuplicates: config.exclude_duplicates ?? false,
+          copyStructure: config.structure || "flat",
+
+          // Arrays -> CSV Strings
+          includeExtensions: joinCSV(
+            config.include_exts || config.includeExtensions
+          ),
+          excludeExtensions: joinCSV(
+            config.exclude_exts || config.excludeExtensions
+          ),
+          nameGlobInclude: joinCSV(config.name_glob_include),
+          nameGlobExclude: joinCSV(config.name_glob_exclude),
+
+          // Arrays -> Sets
           selectedFileTypes: new Set(
-            config.selected_types || Array.from(state.selectedFileTypes || [])
+            config.selected_types || config.file_types || []
           ),
-          selectedProjectTypes: new Set(
-            config.project_types || Array.from(state.selectedProjectTypes || [])
-          ),
-          deepScan: config.deep_scan ?? state.deepScan ?? false,
-          deepScanTerms: config.deep_scan_terms || state.deepScanTerms || [""],
-          deepScanMode:
-            config.deep_scan_mode?.toLowerCase?.() ||
-            state.deepScanMode ||
-            "any",
-          excludedFolders: new Set(
-            config.excluded_folders || Array.from(state.excludedFolders || [])
-          ),
-          customExcludedFolders: new Set(),
-        })),
-      resetToBlank: () => set(() => ({ ...initialState })),
+          selectedProjectTypes: new Set(config.project_types || []),
+          excludedFolders: new Set(config.excluded_folders || []),
+          // Presets usually store specific exclusions, we can load them into custom or override default.
+          // For safety, let's load them into excludedFolders (the combined set).
+
+          // Deep scan terms
+          deepScanTerms: config.deep_scan_terms || [],
+        });
+
+        // 2. Complex Filter Logic (Size/Time)
+        // Attempt to reconstruct preset values if they match known keys,
+        // otherwise default to 'custom' or 'all'.
+        if (config.size_filter) {
+          set({ sizeFilter: config.size_filter });
+        } else if (
+          config.size_min !== undefined ||
+          config.size_max !== undefined
+        ) {
+          // If manual bytes are present, set to custom string
+          const min = config.size_min || 0;
+          const max = config.size_max || "inf";
+          // Basic reconstruction for UI display
+          set({ sizeFilter: `custom:${min}-${max}` });
+        }
+
+        if (config.time_filter) {
+          set({ timeFilter: config.time_filter });
+        }
+      },
     }),
     {
-      name: "file-filter-store",
+      name: "file-filter-storage",
+      // Define which parts of state to persist
       partialize: (state) => ({
-        // Only persist these values, not UI state or custom exclusions
-        // --- UPDATED: Persist dryRun ---
-        dryRun: state.dryRun,
-        // -------------------------------
+        sourceFolder: state.sourceFolder,
+        destinationFolder: state.destinationFolder,
+        outputFolderName: state.outputFolderName,
         includeExtensions: state.includeExtensions,
         excludeExtensions: state.excludeExtensions,
         sizeFilter: state.sizeFilter,
         timeFilter: state.timeFilter,
-        excludedFolders: Array.from(state.excludedFolders),
-        deepScanMode: state.deepScanMode,
-        selectedProjectTypes: Array.from(state.selectedProjectTypes),
+        // Convert Sets to Arrays for JSON storage
         selectedFileTypes: Array.from(state.selectedFileTypes),
-
-        // Persist advanced
+        selectedProjectTypes: Array.from(state.selectedProjectTypes),
+        excludedFolders: Array.from(state.excludedFolders),
+        customExcludedFolders: Array.from(state.customExcludedFolders),
+        deepScan: state.deepScan,
+        deepScanTerms: state.deepScanTerms,
+        deepScanMode: state.deepScanMode,
         includeHidden: state.includeHidden,
         followSymlinks: state.followSymlinks,
+        respectGitignore: state.respectGitignore,
         maxDepth: state.maxDepth,
         timeAttribute: state.timeAttribute,
-        respectGitignore: state.respectGitignore,
         nameGlobInclude: state.nameGlobInclude,
         nameGlobExclude: state.nameGlobExclude,
         nameRegexInclude: state.nameRegexInclude,
         nameRegexExclude: state.nameRegexExclude,
         deepScanMaxSizeMB: state.deepScanMaxSizeMB,
+        excludeDuplicates: state.excludeDuplicates,
+        copyStructure: state.copyStructure,
       }),
       onRehydrateStorage: () => (state) => {
-        // Convert arrays back to Sets when loading from storage
-        if (
-          state &&
-          state.excludedFolders &&
-          Array.isArray(state.excludedFolders)
-        ) {
-          state.excludedFolders = new Set(state.excludedFolders);
-        }
-        if (
-          state &&
-          state.selectedFileTypes &&
-          Array.isArray(state.selectedFileTypes)
-        ) {
-          state.selectedFileTypes = new Set(state.selectedFileTypes);
-        }
-        if (
-          state &&
-          state.selectedProjectTypes &&
-          Array.isArray(state.selectedProjectTypes)
-        ) {
-          state.selectedProjectTypes = new Set(state.selectedProjectTypes);
-        }
-        // Ensure custom exclusions start empty
+        // Convert Arrays back to Sets upon hydration
         if (state) {
-          state.customExcludedFolders = new Set();
+          if (Array.isArray(state.excludedFolders))
+            state.excludedFolders = new Set(state.excludedFolders);
+          if (Array.isArray(state.customExcludedFolders))
+            state.customExcludedFolders = new Set(state.customExcludedFolders);
+          if (Array.isArray(state.selectedFileTypes))
+            state.selectedFileTypes = new Set(state.selectedFileTypes);
+          if (Array.isArray(state.selectedProjectTypes))
+            state.selectedProjectTypes = new Set(state.selectedProjectTypes);
         }
       },
     }
   )
 );
+
+// =========================================
+// HELPER FUNCTIONS (Internal)
+// =========================================
+
+function parseSize(filter) {
+  if (!filter || filter === "all") return { min: null, max: null };
+
+  // Standard Presets
+  if (filter === "small") return { min: 0, max: 1024 * 1024 }; // 1MB
+  if (filter === "medium") return { min: 1024 * 1024, max: 10 * 1024 * 1024 }; // 10MB
+  if (filter === "large")
+    return { min: 10 * 1024 * 1024, max: 100 * 1024 * 1024 }; // 100MB
+  if (filter === "huge") return { min: 100 * 1024 * 1024, max: null };
+
+  // Custom "custom:min-max"
+  if (filter.startsWith("custom:")) {
+    const [minStr, maxStr] = filter.replace("custom:", "").split("-");
+
+    // Helper to parse "5MB", "10KB" etc.
+    const parseBytes = (str) => {
+      if (!str || str === "inf") return null;
+      const units = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
+      const match = str.toLowerCase().match(/^(\d+(?:\.\d+)?)([a-z]+)?$/);
+      if (!match) return 0;
+      const val = parseFloat(match[1]);
+      const unit = match[2] || "b";
+      return Math.floor(val * (units[unit] || 1));
+    };
+
+    return { min: parseBytes(minStr), max: parseBytes(maxStr) };
+  }
+  return { min: null, max: null };
+}
+
+function parseTime(filter) {
+  if (!filter || filter === "none") return { min: null, max: null };
+
+  const now = Date.now() / 1000; // seconds
+  const parseOffset = (str) => {
+    const match = str.match(/^(\d+)([hdwmy])$/);
+    if (!match) return 0;
+    const val = parseInt(match[1], 10);
+    const unit = match[2];
+    const multipliers = {
+      h: 3600,
+      d: 86400,
+      w: 604800,
+      m: 2592000, // approx 30 days
+      y: 31536000,
+    };
+    return val * (multipliers[unit] || 0);
+  };
+
+  // Presets like "<24h" means min=now-24h, max=now
+  if (filter.startsWith("<")) {
+    const offset = parseOffset(filter.substring(1));
+    return { min: now - offset, max: null }; // "Since X time ago"
+  }
+  // Presets like ">30d" means min=null, max=now-30d
+  if (filter.startsWith(">")) {
+    const offset = parseOffset(filter.substring(1));
+    return { min: null, max: now - offset }; // "Older than X time"
+  }
+
+  // Custom handling could go here if implemented in UI
+  return { min: null, max: null };
+}
 
 export default useFilterStore;

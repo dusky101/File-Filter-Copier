@@ -10,26 +10,33 @@ import {
   X,
   Copy,
   CheckCircle2,
-  Loader2, // + spinner for copy action
+  Loader2,
+  FolderCheck,
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
 import useSettingsStore from "../../stores/useSettingsStore";
 import { exportPreview } from "../../utils/exportUtils";
 import PreviewSectionTable from "./PreviewSectionTable";
-import { copyFiles } from "../../services/api"; // + copy API
+import { copyFiles } from "../../services/api";
 
 /**
  * PreviewSection Component
  *
  * Displays filtered file results in a paginated, sortable table with enhanced export options.
- * Features inline format selection and metadata toggle with direct link to settings.
- *
- * @component
+ * "Copy Selected" action now uses the global Organisation setting from the main app.
  */
 const PreviewSection = ({ onOpenSettings }) => {
   const { filteredFiles, duplicates } = usePreviewStore();
-  const { dryRun, destinationFolder, outputFolderName } = useFilterStore(); // + need dest/output for copy
+
+  const {
+    dryRun,
+    destinationFolder,
+    outputFolderName,
+    sourceFolder, // Needed for 'preserve' mode
+    copyStructure, // Use global structure setting
+  } = useFilterStore();
+
   const {
     animationsEnabled,
     defaultExportFormat,
@@ -49,49 +56,27 @@ const PreviewSection = ({ onOpenSettings }) => {
   const [sortBy, setSortBy] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(defaultItemsPerPage);
+  const [itemsPerPage, setItemsPerPage] = useState(defaultItemsPerPage || 50);
 
   // Selection state (by file.path)
   const [selectedFiles, setSelectedFiles] = useState(() => new Set());
-  const toggleFileSelection = (path) =>
-    setSelectedFiles((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  const deselectAll = () => setSelectedFiles(new Set());
-  // Select all over the current processed (filtered+sorted) list
-  const selectAll = (all = []) =>
-    setSelectedFiles(new Set(all.map((f) => f.path)));
 
-  // Copy‑selected progress flag (fix: was missing)
+  // Copy Selected State
   const [isCopyingSelected, setIsCopyingSelected] = useState(false);
+  const [copyResult, setCopyResult] = useState(null);
 
-  // Duplicates dialog state/hooks (must be before any early return)
+  // Duplicates dialog state
   const [dupOpen, setDupOpen] = useState(false);
   const [copiedToast, setCopiedToast] = useState(false);
-  const duplicateEntries = useMemo(() => {
-    const obj = duplicates || {};
-    return Object.entries(obj).filter(
-      ([, paths]) => Array.isArray(paths) && paths.length > 1
-    );
-  }, [duplicates]);
-  const duplicateCount = duplicateEntries.length;
-  const copyPaths = async (paths) => {
-    try {
-      await navigator.clipboard.writeText(paths.join("\n"));
-      // show a temporary “Copied” toast
-      setCopiedToast(true);
-      window.clearTimeout(copyPaths._t);
-      copyPaths._t = window.setTimeout(() => setCopiedToast(false), 2000);
-    } catch {}
-  };
 
-  // Safety check: ensure filteredFiles is an array (must be before early return)
-  const safeFilteredFiles = Array.isArray(filteredFiles) ? filteredFiles : [];
+  // Extension filter UI state
+  const [extFilterOpen, setExtFilterOpen] = useState(false);
+  const [extFilterQuery, setExtFilterQuery] = useState("");
+  const [extSelected, setExtSelected] = useState(() => new Set());
+  const [extAll, setExtAll] = useState(true);
+  const extPopoverRef = useRef(null);
 
-  // Helper: consistent extension extraction (upper for display, lower for logic)
+  // Helpers
   const getExtLower = (f) => {
     if (!f?.name) return "";
     const i = f.name.lastIndexOf(".");
@@ -99,15 +84,15 @@ const PreviewSection = ({ onOpenSettings }) => {
   };
   const getExtUpper = (f) => getExtLower(f).toUpperCase();
 
-  // Extension filter UI state (Excel-like for the header)
-  const [extFilterOpen, setExtFilterOpen] = useState(false);
-  const [extFilterQuery, setExtFilterQuery] = useState("");
-  // Selected extensions + "all selected" flag
-  const [extSelected, setExtSelected] = useState(() => new Set());
-  const [extAll, setExtAll] = useState(true); // NEW: true = all ticks shown
-  const extPopoverRef = useRef(null);
+  // Safety check
+  const safeFilteredFiles = Array.isArray(filteredFiles) ? filteredFiles : [];
 
-  // Close popover on outside click
+  // Sync itemsPerPage
+  useEffect(() => {
+    setItemsPerPage(defaultItemsPerPage || 50);
+  }, [defaultItemsPerPage]);
+
+  // Close popover
   useEffect(() => {
     const onDocClick = (e) => {
       if (!extFilterOpen) return;
@@ -119,7 +104,7 @@ const PreviewSection = ({ onOpenSettings }) => {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [extFilterOpen]);
 
-  // All extensions present in current result set (pre-filter)
+  // Compute available extensions
   const allExtensions = useMemo(() => {
     const s = new Set();
     for (const f of safeFilteredFiles) {
@@ -129,7 +114,7 @@ const PreviewSection = ({ onOpenSettings }) => {
     return Array.from(s).sort((a, b) => a.localeCompare(b));
   }, [safeFilteredFiles]);
 
-  // Keep selection in sync with available options
+  // Sync selection with options
   useEffect(() => {
     if (extAll) {
       setExtSelected(new Set(allExtensions));
@@ -148,9 +133,7 @@ const PreviewSection = ({ onOpenSettings }) => {
 
   const extFilterIsActive = !extAll;
 
-  /**
-   * Filter and sort files based on search, extension filter and sort criteria
-   */
+  // Filter and sort
   const processedFiles = useMemo(() => {
     let result = [...safeFilteredFiles];
 
@@ -163,40 +146,33 @@ const PreviewSection = ({ onOpenSettings }) => {
       );
     }
 
-    // Apply extension filter
     if (!extAll) {
-      if (extSelected.size === 0) {
-        result = [];
-      } else {
-        result = result.filter((f) => extSelected.has(getExtUpper(f)));
-      }
+      if (extSelected.size === 0) result = [];
+      else result = result.filter((f) => extSelected.has(getExtUpper(f)));
     }
 
-    // Apply sorting
     result.sort((a, b) => {
-      let compareA, compareB;
-
+      let valA, valB;
       switch (sortBy) {
         case "name":
-          compareA = a.name.toLowerCase();
-          compareB = b.name.toLowerCase();
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
           break;
         case "size":
-          compareA = a.size;
-          compareB = b.size;
+          valA = a.size;
+          valB = b.size;
           break;
         case "modified":
-          compareA = a.modified;
-          compareB = b.modified;
+          valA = a.modified;
+          valB = b.modified;
           break;
         case "created":
-          compareA = a.created;
-          compareB = b.created;
+          valA = a.created;
+          valB = b.created;
           break;
-        case "type": // legacy alias, keep for safety
-        case "ext": // fix: allow sorting by the Extension column key
-          compareA = getExtLower(a);
-          compareB = getExtLower(b);
+        case "ext":
+          valA = getExtLower(a);
+          valB = getExtLower(b);
           break;
         case "searchType":
           const st = (f) =>
@@ -204,23 +180,22 @@ const PreviewSection = ({ onOpenSettings }) => {
               ? f.search_tags.join(", ")
               : f.semantic_type || "Unclassified"
             ).toLowerCase();
-          compareA = st(a);
-          compareB = st(b);
+          valA = st(a);
+          valB = st(b);
           break;
         default:
-          compareA = a.name.toLowerCase();
-          compareB = b.name.toLowerCase();
+          valA = a.name.toLowerCase();
+          valB = b.name.toLowerCase();
       }
-
-      if (compareA < compareB) return sortOrder === "asc" ? -1 : 1;
-      if (compareA > compareB) return sortOrder === "asc" ? 1 : -1;
+      if (valA < valB) return sortOrder === "asc" ? -1 : 1;
+      if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
 
     return result;
   }, [safeFilteredFiles, searchTerm, sortBy, sortOrder, extSelected, extAll]);
 
-  // Keep selection valid when the processed list changes
+  // Maintain selection validity
   useEffect(() => {
     if (selectedFiles.size === 0) return;
     const valid = new Set(processedFiles.map((f) => f.path));
@@ -233,9 +208,8 @@ const PreviewSection = ({ onOpenSettings }) => {
       }
       return changed ? next : prev;
     });
-  }, [processedFiles]); // eslint-disable-line
+  }, [processedFiles]);
 
-  // Pagination
   const totalPages = Math.ceil(processedFiles.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedFiles = processedFiles.slice(
@@ -243,12 +217,20 @@ const PreviewSection = ({ onOpenSettings }) => {
     startIndex + itemsPerPage
   );
 
-  // Don't show preview if dry run is disabled (after all hooks)
-  if (!dryRun) return null;
+  // --- Handlers ---
 
-  /**
-   * Handle column header click for sorting
-   */
+  const toggleFileSelection = (path) =>
+    setSelectedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  const deselectAll = () => setSelectedFiles(new Set());
+  const selectAll = (all = []) =>
+    setSelectedFiles(new Set(all.map((f) => f.path)));
+
   const handleSort = (column) => {
     if (sortBy === column) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -258,20 +240,13 @@ const PreviewSection = ({ onOpenSettings }) => {
     }
   };
 
-  /**
-   * Export files in the selected format
-   */
   const handleExport = async () => {
     try {
-      // Use centralized export utility to generate and download the file.
-      // It preserves date strings already present on file objects and avoids re-parsing.
       exportPreview(processedFiles, duplicates || {}, defaultExportFormat, {
         includeMetadata: includeMetadataInExport,
-        // Keep timestamp and flat listing consistent with current UI
         useTimestamp: true,
         groupByType: false,
-        // Only export selected rows if any are selected; otherwise export all
-        selectedPaths: selectedFiles, // Set<string>
+        selectedPaths: selectedFiles,
         selectionKey: "path",
       });
     } catch (error) {
@@ -280,13 +255,12 @@ const PreviewSection = ({ onOpenSettings }) => {
     }
   };
 
-  /**
-   * Copy selected files to the destination folder
-   */
   const handleCopySelected = async () => {
     try {
       if (!destinationFolder || !outputFolderName) {
-        alert("Select destination and output folder name first.");
+        alert(
+          "Please select a Destination Folder and Output Name in the main configuration above."
+        );
         return;
       }
       const filesToCopy = processedFiles
@@ -303,14 +277,17 @@ const PreviewSection = ({ onOpenSettings }) => {
         files: filesToCopy,
         destination: destinationFolder,
         outputFolder: outputFolderName,
+        // Uses the global structure setting from store
+        structure: copyStructure || "flat",
+        source_folder: sourceFolder,
       });
 
       if (res?.success) {
-        alert(
-          `✅ Copied ${res.data.copied_count} file${
-            res.data.copied_count !== 1 ? "s" : ""
-          }.\n\nOutput: ${res.data.output_path}`
-        );
+        setCopyResult({
+          count: res.data.copied_count,
+          path: res.data.output_path,
+        });
+        setSelectedFiles(new Set());
       } else {
         alert(`❌ Copy failed: ${res?.error || "Unknown error"}`);
       }
@@ -322,24 +299,24 @@ const PreviewSection = ({ onOpenSettings }) => {
     }
   };
 
-  /**
-   * Render sort icon for column headers
-   */
-  const SortIcon = ({ column }) => {
-    if (sortBy !== column) return null;
-    return sortOrder === "asc" ? (
-      <SortAsc className="w-4 h-4" />
-    ) : (
-      <SortDesc className="w-4 h-4" />
+  // --- Duplicate Logic ---
+  const duplicateEntries = useMemo(() => {
+    const obj = duplicates || {};
+    return Object.entries(obj).filter(
+      ([, paths]) => Array.isArray(paths) && paths.length > 1
     );
+  }, [duplicates]);
+  const duplicateCount = duplicateEntries.length;
+
+  const copyPaths = async (paths) => {
+    try {
+      await navigator.clipboard.writeText(paths.join("\n"));
+      setCopiedToast(true);
+      setTimeout(() => setCopiedToast(false), 2000);
+    } catch {}
   };
 
-  const searchTypeFor = (f) => {
-    if (Array.isArray(f.search_tags) && f.search_tags.length) {
-      return f.search_tags.join(", ");
-    }
-    return f.semantic_type || "Unclassified";
-  };
+  // --- Render ---
 
   if (safeFilteredFiles.length === 0) {
     return (
@@ -355,9 +332,12 @@ const PreviewSection = ({ onOpenSettings }) => {
     );
   }
 
+  // Only show if Dry Run is enabled
+  if (!dryRun) return null;
+
   return (
-    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-      {/* Header with enhanced export controls */}
+    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden mt-8 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header */}
       <div className="flex items-center justify-between mb-4 p-6 pb-0">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" />
@@ -374,81 +354,56 @@ const PreviewSection = ({ onOpenSettings }) => {
             <button
               onClick={() => setDupOpen(true)}
               className="px-3 py-2 text-sm font-medium rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 hover:shadow-sm"
-              title="View duplicate filenames and their paths"
             >
               View duplicates ({duplicateCount})
             </button>
           )}
 
-          {safeFilteredFiles.length > 0 && (
-            <>
-              {/* Metadata status badge - click to open settings */}
-              <button
-                onClick={() => toggleMetadataInExport()} // click toggles ON/OFF
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  onOpenSettings
-                    ? onOpenSettings()
-                    : window.dispatchEvent(new CustomEvent("open-settings"));
-                }}
-                onMouseDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && onOpenSettings) {
-                    e.preventDefault();
-                    onOpenSettings(); // Cmd/Ctrl+Click opens Settings
-                  }
-                }}
-                className={`
-                  flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
-                  ${includeMetadataInExport ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600"}
-                  hover:shadow-sm transition-all cursor-pointer
-                `}
-                title="Click to toggle metadata. Right‑click or Cmd/Ctrl+Click to open Settings."
-              >
-                <Settings2 className="w-3.5 h-3.5" />
-                {includeMetadataInExport ? "Metadata: On" : "Metadata: Off"}
-              </button>
+          {/* Export Controls */}
+          <div className="flex items-center gap-2">
+            <select
+              value={defaultExportFormat}
+              onChange={(e) => setDefaultExportFormat(e.target.value)}
+              className="px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+            >
+              <option value="html">HTML Report</option>
+              <option value="csv">CSV Spreadsheet</option>
+              <option value="json">JSON Data</option>
+              <option value="txt">Text List</option>
+              <option value="md">Markdown</option>
+            </select>
 
-              {/* Format selector */}
-              <select
-                value={defaultExportFormat}
-                onChange={(e) => setDefaultExportFormat(e.target.value)}
-                className={`
-                  px-3 py-2 text-sm font-medium rounded-lg
-                  bg-white dark:bg-slate-800 
-                  border border-slate-300 dark:border-slate-600
-                  text-slate-700 dark:text-slate-300
-                  focus:outline-none focus:ring-2 focus:ring-blue-500
-                  ${animationsEnabled ? "transition-all" : ""}
-                `}
-              >
-                <option value="txt">Text (.txt)</option>
-                <option value="csv">CSV (.csv)</option>
-                <option value="json">JSON (.json)</option>
-                <option value="md">Markdown (.md)</option>
-                <option value="html">HTML (.html)</option>
-              </select>
+            <button
+              onClick={toggleMetadataInExport}
+              title={`Metadata is ${includeMetadataInExport ? "ON" : "OFF"}`}
+              className={`p-2 rounded-lg border transition-all ${
+                includeMetadataInExport
+                  ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400"
+                  : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-400"
+              }`}
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
 
-              {/* Export button */}
-              <button
-                onClick={handleExport}
-                className={`
-                  flex items-center gap-2 px-4 py-2 
-                  bg-gradient-to-r from-green-600 to-emerald-600 text-white 
-                  rounded-lg hover:from-green-700 hover:to-emerald-700 
-                  shadow-md hover:shadow-lg text-sm font-medium
-                  focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2
-                  ${animationsEnabled ? "transition-all" : ""}
-                `}
-              >
-                <Download className="w-4 h-4" />
-                Export as {defaultExportFormat.toUpperCase()}
-              </button>
-            </>
-          )}
+            <button
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-medium shadow hover:shadow-lg transition-all"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export</span>
+            </button>
+          </div>
+
+          <button
+            onClick={onOpenSettings}
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          >
+            <Settings2 className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
-      {/* Search and controls */}
+      {/* Search & Pagination Controls */}
       <div className="px-6 pb-4 flex items-center gap-4">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -460,7 +415,7 @@ const PreviewSection = ({ onOpenSettings }) => {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
@@ -479,7 +434,7 @@ const PreviewSection = ({ onOpenSettings }) => {
         </select>
       </div>
 
-      {/* Copy selected toolbar (below search) */}
+      {/* Copy Selected Toolbar (Only visible when files are selected) */}
       <div className="px-6 pb-3 flex items-center justify-between">
         <div className="text-sm text-slate-600 dark:text-slate-400">
           {selectedFiles.size > 0
@@ -491,40 +446,29 @@ const PreviewSection = ({ onOpenSettings }) => {
               }`
             : ""}
         </div>
-        <button
-          onClick={handleCopySelected}
-          disabled={
-            isCopyingSelected ||
-            selectedFiles.size === 0 ||
-            !destinationFolder ||
-            !outputFolderName
-          }
-          className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border 
-            ${
-              selectedFiles.size > 0 && destinationFolder && outputFolderName
-                ? "bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700"
-                : "bg-slate-200/60 dark:bg-slate-700/40 text-slate-500 border-slate-300 dark:border-slate-600 cursor-not-allowed"
-            }`}
-          title={
-            selectedFiles.size === 0
-              ? "Select rows to enable"
-              : !destinationFolder || !outputFolderName
-                ? "Set destination and output folder name"
-                : "Copy selected rows"
-          }
-        >
-          {isCopyingSelected ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Copying…
-            </>
-          ) : (
-            <>
-              <Copy className="w-4 h-4" />
-              Copy selected
-            </>
+
+        <div className="flex items-center gap-2">
+          {selectedFiles.size > 0 && (
+            <button
+              onClick={handleCopySelected}
+              disabled={isCopyingSelected}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Copy selected files using the Organisation setting above"
+            >
+              {isCopyingSelected ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Copying...
+                </>
+              ) : (
+                <>
+                  <FolderCheck className="w-4 h-4" />
+                  Copy Selected
+                </>
+              )}
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -533,7 +477,6 @@ const PreviewSection = ({ onOpenSettings }) => {
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSort={handleSort}
-        // Selection wiring
         selectedFiles={selectedFiles}
         toggleFileSelection={toggleFileSelection}
         selectAll={() => selectAll(processedFiles)}
@@ -600,7 +543,6 @@ const PreviewSection = ({ onOpenSettings }) => {
                   key: "ext",
                   label: "Extension",
                   getValue: (f) => getExtUpper(f),
-                  // Header extra: Excel-like filter control
                   headerExtra: () => (
                     <span className="ml-1 inline-flex items-center">
                       <button
@@ -609,7 +551,9 @@ const PreviewSection = ({ onOpenSettings }) => {
                           e.stopPropagation();
                           setExtFilterOpen((v) => !v);
                         }}
-                        className={`p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 ${extFilterIsActive ? "text-blue-600" : "text-slate-500"}`}
+                        className={`p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 ${
+                          extFilterIsActive ? "text-blue-600" : "text-slate-500"
+                        }`}
                       >
                         <Filter className="w-3.5 h-3.5" />
                       </button>
@@ -619,7 +563,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                           onClick={(e) => e.stopPropagation()}
                           className="absolute top-full right-6 mt-2 z-50 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-3"
                         >
-                          <div className="text-xs font-semibold mb-2">
+                          <div className="text-xs font-semibold mb-2 text-slate-900 dark:text-white">
                             Filter: Extension
                           </div>
                           <div className="mb-2">
@@ -629,11 +573,11 @@ const PreviewSection = ({ onOpenSettings }) => {
                                 setExtFilterQuery(e.target.value)
                               }
                               placeholder="Search extensions..."
-                              className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                              className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
                             />
                           </div>
                           <div className="max-h-56 overflow-auto pr-1">
-                            <label className="flex items-center gap-2 py-1 text-sm">
+                            <label className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300">
                               <input
                                 type="checkbox"
                                 checked={extAll}
@@ -654,7 +598,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                               return (
                                 <label
                                   key={ext}
-                                  className="flex items-center gap-2 py-1 text-sm"
+                                  className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300"
                                 >
                                   <input
                                     type="checkbox"
@@ -683,7 +627,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                           <div className="mt-3 flex items-center justify-between">
                             <div className="flex gap-2">
                               <button
-                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600"
+                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
                                 onClick={() => {
                                   setExtAll(true);
                                   setExtSelected(new Set(allExtensions));
@@ -692,7 +636,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                                 Select All
                               </button>
                               <button
-                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600"
+                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
                                 onClick={() => {
                                   setExtAll(false);
                                   setExtSelected(new Set());
@@ -702,7 +646,7 @@ const PreviewSection = ({ onOpenSettings }) => {
                               </button>
                             </div>
                             <button
-                              className="text-xs px-3 py-1 rounded bg-blue-600 text-white"
+                              className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
                               onClick={() => setExtFilterOpen(false)}
                             >
                               Close
@@ -721,7 +665,7 @@ const PreviewSection = ({ onOpenSettings }) => {
         ]}
       />
 
-      {/* Pagination */}
+      {/* Pagination Footer */}
       {totalPages > 1 && (
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <div className="text-sm text-slate-600 dark:text-slate-400">
@@ -754,41 +698,74 @@ const PreviewSection = ({ onOpenSettings }) => {
         </div>
       )}
 
-      {/* Duplicates Modal */}
-      {dupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setDupOpen(false)}
-          />
-          <div className="relative z-10 w-[90vw] max-w-3xl max-h-[80vh] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
-                Duplicate filenames ({duplicateCount})
+      {/* Success Toast */}
+      {copyResult && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in">
+          <div className="bg-white dark:bg-slate-800 border border-green-200 dark:border-green-900/50 shadow-lg rounded-xl p-4 flex items-start gap-3 max-w-sm">
+            <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full text-green-600 dark:text-green-400">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-semibold text-slate-900 dark:text-white">
+                Files Copied Successfully
               </h4>
+              <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                Copied <strong>{copyResult.count}</strong> files to:
+              </p>
+              <div className="mt-2 text-xs font-mono bg-slate-100 dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-700 break-all">
+                {copyResult.path}
+              </div>
               <button
-                className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
-                onClick={() => setDupOpen(false)}
-                aria-label="Close"
+                onClick={() => setCopyResult(null)}
+                className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline"
               >
-                <X className="w-4 h-4" />
+                Dismiss
               </button>
             </div>
-            {/* Scrollable body */}
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 space-y-5">
+          </div>
+        </div>
+      )}
+
+      {/* Duplicates Modal */}
+      {dupOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Copy className="w-5 h-5 text-amber-500" />
+                  Duplicate Filenames
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  Files with identical names in different locations
+                </p>
+              </div>
+              <button
+                onClick={() => setDupOpen(false)}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto p-6 space-y-6">
               {duplicateEntries.map(([name, paths]) => (
                 <div
                   key={name}
-                  className="rounded-xl border border-slate-200 dark:border-slate-700"
+                  className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 overflow-hidden"
                 >
-                  <div className="flex items-center justify-between px-4 py-4 bg-slate-50 dark:bg-slate-800/60">
-                    <div className="text-sm font-medium text-slate-900 dark:text-white">
-                      {name}{" "}
-                      <span className="text-slate-500">({paths.length})</span>
+                  <div className="bg-white dark:bg-slate-800 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                    <div className="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-400" />
+                      {name}
                     </div>
                     <button
-                      onClick={() => copyPaths(paths)}
-                      className="flex items-center gap-1 text-xs h-8 px-3 rounded border border-slate-300 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      onClick={() => {
+                        navigator.clipboard.writeText(paths.join("\n"));
+                        setCopiedToast(true);
+                        setTimeout(() => setCopiedToast(false), 2000);
+                      }}
+                      className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 px-2 py-1 rounded transition-colors"
                       title="Copy all paths"
                     >
                       <Copy className="w-3.5 h-3.5" /> Copy paths
@@ -811,7 +788,7 @@ const PreviewSection = ({ onOpenSettings }) => {
             <div className="px-6 py-5 border-t border-slate-200 dark:border-slate-700 text-right">
               <button
                 onClick={() => setDupOpen(false)}
-                className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm"
+                className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium hover:opacity-90 transition-opacity"
               >
                 Close
               </button>
@@ -819,7 +796,7 @@ const PreviewSection = ({ onOpenSettings }) => {
 
             {/* Copied toast */}
             {copiedToast && (
-              <div className="absolute bottom-4 left-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs shadow">
+              <div className="absolute bottom-4 left-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs shadow-lg animate-in slide-in-from-bottom-2 fade-in">
                 <CheckCircle2 className="w-4 h-4" />
                 Paths copied
               </div>

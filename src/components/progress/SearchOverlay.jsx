@@ -6,8 +6,8 @@ const MESSAGES = [
   "Indexing file structure...",
   "Applying exclusion rules...",
   "Filtering by extension...",
-  "Analyzing metadata...",
-  "Finalizing results...",
+  "Analysing metadata...",
+  "Finalising results...",
 ];
 
 const ICONS = [FolderOpen, Filter, FileText, Search];
