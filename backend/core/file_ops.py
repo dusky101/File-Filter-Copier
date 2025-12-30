@@ -4,9 +4,9 @@ import logging
 from datetime import datetime
 from .utils import format_size, format_timestamp, safe_filename, ensure_unique_path
 from .file_types import get_file_category
-# --- NEW IMPORT ---
+# --- NEW IMPORT: Essential for Date-Based Sorting ---
 from .exif_utils import get_metadata
-# ------------------
+# ----------------------------------------------------
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -55,13 +55,12 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
                     
                     if date_str:
                         # Parse various EXIF date formats
-                        # Standard EXIF: "YYYY:MM:DD HH:MM:SS"
-                        # ISO/File: "YYYY-MM-DD ..."
+                        # Standard EXIF: "YYYY:MM:DD HH:MM:SS" or "YYYY-MM-DD ..."
                         clean_date = date_str.replace(":", "-").replace("/", "-")[:10]
                         # Expecting YYYY-MM-DD now
                         dt = datetime.strptime(clean_date, "%Y-%m-%d")
                     else:
-                        # Fallback to file modification time if extracting metadata returned nothing
+                        # Fallback to file modification time
                         ts = os.path.getmtime(src_path)
                         dt = datetime.fromtimestamp(ts)
                     

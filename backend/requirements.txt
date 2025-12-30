@@ -11,6 +11,7 @@ orjson==3.10.7
 Pillow==10.4.0
 pillow-heif==0.18.0
 tinytag==1.10.1
+reverse_geocoder==1.5.1
 
 # Performance extras
 uvloop==0.21.0; sys_platform != "win32"

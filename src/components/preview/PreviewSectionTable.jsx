@@ -1,46 +1,9 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import useFilterStore from "../../stores/useFilterStore";
+import useSettingsStore from "../../stores/useSettingsStore";
 
-const px = (n) => `${Math.max(60, Math.min(1200, n))}px`;
-
-// --- NEW: Definition of Photo Mode Columns ---
-const PHOTO_COLUMNS = [
-  {
-    key: "metadata.model",
-    label: "Camera",
-    width: 180,
-    getValue: (f) => f.metadata?.model || "-",
-    sortable: true,
-  },
-  {
-    key: "metadata.lens",
-    label: "Lens",
-    width: 200,
-    getValue: (f) => f.metadata?.lens || "-",
-    sortable: true,
-  },
-  {
-    key: "metadata.iso",
-    label: "ISO",
-    width: 80,
-    getValue: (f) => f.metadata?.iso || "-",
-    sortable: true,
-  },
-  {
-    key: "metadata.aperture",
-    label: "Aperture",
-    width: 90,
-    getValue: (f) => f.metadata?.aperture || "-",
-    sortable: true,
-  },
-  {
-    key: "metadata.shutter_speed",
-    label: "Shutter",
-    width: 100,
-    getValue: (f) => f.metadata?.shutter_speed || "-",
-    sortable: true,
-  },
-];
+// Helper to sanitize width
+const px = (n) => `${Math.max(60, Math.min(1200, n || 150))}px`;
 
 const PreviewSectionTable = ({
   files,
@@ -48,63 +11,134 @@ const PreviewSectionTable = ({
   sortBy,
   sortOrder,
   onSort,
-  // Selection props
   selectedFiles,
   toggleFileSelection,
   selectAll,
   deselectAll,
   selectionKey = "path",
-  totalSelectableCount, // total items in the current processed list (not just the page)
+  totalSelectableCount,
 }) => {
-  // Access Photo Mode state
   const { photoMode } = useFilterStore();
+  const {
+    showCamera,
+    showLens,
+    showISO,
+    showAperture,
+    showShutter,
+    showDimensions,
+    showLocation,
+  } = useSettingsStore();
 
   // --- DYNAMIC COLUMNS LOGIC ---
   const effectiveColumns = useMemo(() => {
     if (!photoMode) return columns;
 
-    // Create a copy of the base columns
     const newCols = [...columns];
-
-    // Find where to insert metadata (after "Name" is ideal)
     const nameIndex = newCols.findIndex(
       (c) => c.key.toLowerCase() === "name" || c.label?.toLowerCase() === "name"
     );
-
-    // Insert after Name, or at the end if Name not found
     const insertIndex = nameIndex >= 0 ? nameIndex + 1 : newCols.length;
 
-    // Insert the photo columns
-    newCols.splice(insertIndex, 0, ...PHOTO_COLUMNS);
+    const photoCols = [];
+    if (showCamera)
+      photoCols.push({
+        key: "metadata.model",
+        label: "Camera",
+        width: 180,
+        getValue: (f) => f.metadata?.model || "-",
+        sortable: true,
+      });
+    if (showLens)
+      photoCols.push({
+        key: "metadata.lens",
+        label: "Lens",
+        width: 200,
+        getValue: (f) => f.metadata?.lens || "-",
+        sortable: true,
+      });
+    if (showISO)
+      photoCols.push({
+        key: "metadata.iso",
+        label: "ISO",
+        width: 80,
+        getValue: (f) => f.metadata?.iso || "-",
+        sortable: true,
+      });
+    if (showAperture)
+      photoCols.push({
+        key: "metadata.aperture",
+        label: "Aperture",
+        width: 90,
+        getValue: (f) => f.metadata?.aperture || "-",
+        sortable: true,
+      });
+    if (showShutter)
+      photoCols.push({
+        key: "metadata.shutter_speed",
+        label: "Shutter",
+        width: 100,
+        getValue: (f) => f.metadata?.shutter_speed || "-",
+        sortable: true,
+      });
+    if (showDimensions)
+      photoCols.push({
+        key: "metadata.dimensions",
+        label: "Dimensions",
+        width: 120,
+        getValue: (f) => f.metadata?.dimensions || "-",
+        sortable: true,
+      });
+    if (showLocation)
+      photoCols.push({
+        key: "metadata.location",
+        label: "Location",
+        width: 180,
+        getValue: (f) => f.metadata?.location || "-",
+        sortable: true,
+      });
 
+    newCols.splice(insertIndex, 0, ...photoCols);
     return newCols;
-  }, [columns, photoMode]);
+  }, [
+    columns,
+    photoMode,
+    showCamera,
+    showLens,
+    showISO,
+    showAperture,
+    showShutter,
+    showDimensions,
+    showLocation,
+  ]);
 
-  // --- RESIZING LOGIC (Updated to handle dynamic columns) ---
-  const [colWidths, setColWidths] = useState(() =>
-    Object.fromEntries(columns.map((c) => [c.key, c.width || 200]))
-  );
+  // --- RESIZING LOGIC ---
+  const [colWidths, setColWidths] = useState({});
 
-  // Sync widths when columns change (e.g. toggling Photo Mode)
+  // Sync widths when columns change
   useEffect(() => {
     setColWidths((prev) => {
       const next = { ...prev };
-      let changed = false;
       effectiveColumns.forEach((c) => {
         if (next[c.key] === undefined) {
           next[c.key] = c.width || 150;
-          changed = true;
         }
       });
-      return changed ? next : prev;
+      return next;
     });
   }, [effectiveColumns]);
 
-  // Selection enablement
+  // --- NEW: Calculate Total Table Width ---
+  // This allows the table to expand beyond 100% and scroll horizontally
+  const totalTableWidth = useMemo(() => {
+    const checkboxWidth = selectedFiles ? 50 : 0;
+    const colsWidth = effectiveColumns.reduce((acc, c) => {
+      return acc + (colWidths[c.key] || c.width || 150);
+    }, 0);
+    return checkboxWidth + colsWidth;
+  }, [effectiveColumns, colWidths, selectedFiles]);
+
   const selectionEnabled =
     selectedFiles instanceof Set && typeof toggleFileSelection === "function";
-
-  // Header checkbox state reflects GLOBAL selection across processed list
   const headerCheckboxRef = useRef(null);
   const totalCount = totalSelectableCount ?? files.length;
   const allSelectedGlobal =
@@ -118,16 +152,13 @@ const PreviewSectionTable = ({
     }
   }, [someSelectedGlobal]);
 
-  // Range selection for TSV copy (columns only, excludes the checkbox column)
-  const [sel, setSel] = useState(null); // { rs, cs, re, ce }
+  const [sel, setSel] = useState(null);
   const selectingRef = useRef(false);
 
   const cellMouseDown = (r, c, e) => {
     if (e.shiftKey && sel) {
-      // Extend selection
       setSel((prev) => ({ ...prev, re: r, ce: c }));
     } else {
-      // Start selection
       selectingRef.current = true;
       setSel({ rs: r, cs: c, re: r, ce: c });
     }
@@ -151,7 +182,6 @@ const PreviewSectionTable = ({
   useEffect(() => {
     const handleCopy = (e) => {
       if (!sel) return;
-      // build TSV
       const r1 = Math.min(sel.rs, sel.re);
       const r2 = Math.max(sel.rs, sel.re);
       const c1 = Math.min(sel.cs, sel.ce);
@@ -186,28 +216,30 @@ const PreviewSectionTable = ({
 
   const handleResizeStart = (e, key) => {
     e.preventDefault();
+    e.stopPropagation(); // Stop sorting event
     const startX = e.clientX;
-    const startW = colWidths[key];
+    const startW = colWidths[key] || 150;
+
     const onMove = (mv) => {
       const diff = mv.clientX - startX;
       setColWidths((prev) => ({ ...prev, [key]: Math.max(50, startW + diff) }));
     };
+
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
+
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
 
   const handleHeaderClick = (col) => {
-    // If column is sortable and onSort is provided
     if (onSort && col.sortable !== false) {
       onSort(col.key);
     }
   };
 
-  // Helper to get sort icon
   const getSortIcon = (key) => {
     if (sortBy !== key) return null;
     return sortOrder === "asc" ? " ↑" : " ↓";
@@ -215,12 +247,18 @@ const PreviewSectionTable = ({
 
   return (
     <div className="flex-1 overflow-auto relative select-none">
-      <table className="w-full border-collapse text-left relative">
+      <table
+        className="border-collapse text-left relative"
+        // --- KEY CHANGE: Fixed layout + calculated width ---
+        style={{ width: `${totalTableWidth}px`, tableLayout: "fixed" }}
+      >
         <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs uppercase font-semibold shadow-sm">
           <tr>
-            {/* Selection Checkbox Header */}
             {selectionEnabled && (
-              <th className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 px-3 py-2 w-10 text-center border-b border-r border-slate-200 dark:border-slate-700">
+              <th
+                className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-center border-b border-r border-slate-200 dark:border-slate-700"
+                style={{ width: "50px" }} // Fixed width for checkbox
+              >
                 <input
                   type="checkbox"
                   ref={headerCheckboxRef}
@@ -237,7 +275,7 @@ const PreviewSectionTable = ({
             {effectiveColumns.map((c) => (
               <th
                 key={c.key}
-                style={{ width: px(colWidths[c.key]) }}
+                style={{ width: px(colWidths[c.key] || c.width) }}
                 className="group px-4 py-2 border-b border-r border-slate-200 dark:border-slate-700 whitespace-nowrap overflow-hidden relative"
               >
                 <div
@@ -251,8 +289,9 @@ const PreviewSectionTable = ({
                 </div>
                 {/* Resizer Handle */}
                 <div
-                  className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 active:bg-blue-600 z-10"
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-400/50 z-10"
                   onMouseDown={(e) => handleResizeStart(e, c.key)}
+                  onClick={(e) => e.stopPropagation()}
                 />
               </th>
             ))}
@@ -271,9 +310,11 @@ const PreviewSectionTable = ({
                 }
               `}
             >
-              {/* Row Checkbox */}
               {selectionEnabled ? (
-                <td className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 px-3 py-2 text-center border-r border-slate-100 dark:border-slate-800">
+                <td
+                  className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 px-3 py-2 text-center border-r border-slate-100 dark:border-slate-800"
+                  style={{ width: "50px" }}
+                >
                   {(() => {
                     const isSel = selectedFiles.has(f[selectionKey]);
                     return (
@@ -289,18 +330,14 @@ const PreviewSectionTable = ({
               ) : null}
 
               {effectiveColumns.map((c, ci) => {
-                // Support both standard keys and custom getValue accessors (e.g. for metadata)
                 const text = c.getValue ? c.getValue(f) : f[c.key];
-
                 const content =
                   typeof c.renderCell === "function"
                     ? c.renderCell(f)
                     : String(text ?? "");
-
                 const selected = isSelected(ri, ci);
-
                 const style = {
-                  width: px(colWidths[c.key]),
+                  width: px(colWidths[c.key] || c.width),
                   boxShadow: selected
                     ? "inset 0 0 0 2px rgba(16,185,129,1)"
                     : undefined,
