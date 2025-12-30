@@ -6,7 +6,6 @@
 # OS junk
 .DS_Store
 Thumbs.db
-Icon?
 .Spotlight-V100
 .Trashes
 generate_icns.py

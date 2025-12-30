@@ -2,23 +2,43 @@
 # Aligned with UI AdvancedFiltersPanel.jsx fileTypeGroups while keeping existing types for compatibility
 FILE_TYPE_PATTERNS = {
     # UI: Documents
-    "Text Documents": [".txt", ".doc", ".docx", ".pdf", ".rtf", ".odt"],
-    "Spreadsheets": [".xls", ".xlsx", ".csv", ".ods"],
+    "Text Documents": [".txt", ".doc", ".docx", ".pdf", ".rtf", ".odt", ".md", ".tex", ".wpd"],
+    "Spreadsheets": [".xls", ".xlsx", ".csv", ".ods", ".tsv"],
     "Presentations": [".ppt", ".pptx", ".odp", ".key"],
 
     # UI: Media
-    "Images": [".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp", ".webp", ".ico"],
-    "Audio": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma"],
-    "Video": [".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm"],
+    "Images": [
+        # Standard
+        ".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp", ".webp", ".ico", ".tiff", ".tif",
+        # High Efficiency
+        ".heic", ".heif", ".avif",
+        # RAW Formats (Professional)
+        ".cr2", ".cr3", ".crw",  # Canon
+        ".nef", ".nrw",          # Nikon
+        ".arw", ".srf", ".sr2",  # Sony
+        ".orf",                  # Olympus
+        ".rw2",                  # Panasonic
+        ".raf",                  # Fujifilm
+        ".dng",                  # Adobe / Generic
+        ".pef",                  # Pentax
+        ".x3f",                  # Sigma
+        ".3fr", ".fff",          # Hasselblad
+        ".iiq"                   # Phase One
+    ],
+    "Audio": [".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".aiff", ".alac"],
+    "Video": [
+        ".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", 
+        ".m4v", ".mpg", ".mpeg", ".3gp", ".mts", ".m2ts"
+    ],
 
     # UI: Development
-    "Code": [".js", ".ts", ".jsx", ".tsx",".py", ".java", ".cpp", ".c", ".rb", ".go", ".rs", ".swift"],
+    "Code": [".js", ".ts", ".jsx", ".tsx",".py", ".java", ".cpp", ".c", ".rb", ".go", ".rs", ".swift", ".php", ".sql"],
     "Web": [".html", ".css", ".jsx", ".tsx", ".vue", ".scss", ".sass", ".less"],
-    "Config": [".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".conf"],
-    "Scripts": [".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".command"],
+    "Config": [".json", ".yaml", ".yml", ".xml", ".toml", ".ini", ".conf", ".env"],
+    "Scripts": [".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd", ".command", ".lua", ".pl"],
 
     # UI: Archives
-    "Compressed": [".zip", ".rar", ".tar", ".gz", ".7z", ".bz2", ".xz"],
+    "Compressed": [".zip", ".rar", ".tar", ".gz", ".7z", ".bz2", ".xz", ".iso", ".dmg"],
 
     # Existing semantic buckets (kept for compatibility)
     "Models": ["Model", "Entity"],
@@ -49,7 +69,7 @@ FILE_TYPE_PATTERNS = {
     "Media": [".mp4", ".mov", ".avi", ".mp3", ".wav", ".flac", ".mkv"],
     "Executables": [".exe", ".dmg", ".app", ".apk", ".msi"],
     "Archives": [".zip", ".tar", ".gz", ".rar", ".7z", ".iso"],
-    "Design": [".psd", ".ai", ".fig", ".sketch"],
+    "Design": [".psd", ".ai", ".fig", ".sketch", ".indd"],
     "Security": [".pem", ".crt", ".key", ".pfx"],
     "Assets": ["asset", "icon", "logo", "background"]
 }
@@ -62,9 +82,9 @@ CONTENT_MARKERS = {
     "Presentations": ["Slide", "PowerPoint", "Keynote", "Agenda"],
 
     # UI: Media
-    "Images": ["Exif", "RGB", "Alpha Channel", "Layer"],
-    "Audio": ["codec", "bitrate", "duration", "sample rate"],
-    "Video": ["codec", "frame rate", "bitrate", "duration"],
+    "Images": ["Exif", "RGB", "Alpha Channel", "Layer", "ftyp", "JFIF", "MM", "II"],
+    "Audio": ["codec", "bitrate", "duration", "sample rate", "ID3"],
+    "Video": ["codec", "frame rate", "bitrate", "duration", "ftyp"],
 
     # UI: Development
     "Code": ["function", "class", "def ", "import ", "package ", "public class"],

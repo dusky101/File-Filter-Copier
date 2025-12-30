@@ -88,6 +88,25 @@ export const listFolders = async (folderPath) => {
   }
 };
 
+/**
+ * Get default excluded folders from backend
+ * @returns {Promise<Object>} Result with defaults list
+ */
+export const getExcludedFoldersDefaults = async () => {
+  try {
+    const response = await apiClient.get("/excluded-folders/defaults");
+    return response.data;
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error.response?.data?.detail ||
+        error.message ||
+        "Failed to fetch defaults",
+    };
+  }
+};
+
 // ============================================================
 // File Scanning API
 // ============================================================
@@ -96,7 +115,7 @@ export const listFolders = async (folderPath) => {
  * Scan a folder with filters and return matching files
  * Supports optional options.progressId to stream SSE progress.
  *
- * @param {Object} filters - filter configuration
+ * @param {Object} filters - filter configuration (includes photo_mode)
  * @param {Object} [options] - extra options
  * @param {string} [options.progressId] - progress channel id
  * @param {number} [options.timeout] - override timeout ms
@@ -159,7 +178,6 @@ export const copyFiles = async (copyRequest) => {
         files: copyRequest.files || [],
         output_folder: copyRequest.outputFolder || "FilteredFiles",
         destination: copyRequest.destination || "",
-        // ✅ ADDED: Pass structure and source_folder to backend
         structure: copyRequest.structure || "flat",
         source_folder: copyRequest.source_folder || null,
       },
@@ -393,4 +411,5 @@ export default {
   getDefaultPreset,
   setDefaultPreset,
   clearDefaultPreset,
+  getExcludedFoldersDefaults, // Added to default export
 };

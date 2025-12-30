@@ -7,6 +7,9 @@ import fnmatch
 from typing import Callable, Optional
 
 from core.file_types import FILE_TYPE_PATTERNS, CONTENT_MARKERS
+# --- NEW IMPORT: For Photo Mode Metadata ---
+from core.exif_utils import get_metadata
+# -------------------------------------------
 
 # Size constants for cleaner code
 KB = 1024
@@ -47,10 +50,13 @@ def filter_files(
     time_attribute: str = "mtime",
     deep_scan_max_size_bytes: int = 0,
     project_types: Optional[list[str]] = None,  # <- NEW: project role filters (Models, Controllers, Assets, …)
+    # --- NEW PARAMETER: Photo Mode Toggle ---
+    photo_mode: bool = False
+    # ----------------------------------------
 ):
     """
     Traverse a folder and return files matching filters.
-    Returns list of (full_path, semantic_type, search_tags).
+    Returns list of (full_path, semantic_type, search_tags, metadata).
     progress_callback(event, path, bytes_inc): events 'current' | 'advance'
     """
     matching_files = []
@@ -201,7 +207,15 @@ def filter_files(
                     if semantic_types or project_types:
                         tags.append("Semantic")
 
-                matching_files.append((full_path, matched_type, tags))
+                # --- NEW: Extract Metadata if Photo Mode is ON ---
+                metadata = {}
+                if photo_mode:
+                    metadata = get_metadata(full_path)
+                # -------------------------------------------------
+
+                # --- UPDATED RETURN: Append metadata to tuple ---
+                matching_files.append((full_path, matched_type, tags, metadata))
+                
             except Exception as e:
                 print(f"Skipping file due to error: {full_path}\n{e}")
 

@@ -4,6 +4,7 @@ import { getFileLabelFromName } from "./fileTypes";
  * Export Utilities
  * Handles generating export files (Text, CSV, JSON, Markdown, HTML)
  * with updated merged columns and interactive HTML features.
+ * Now supports Photo Mode metadata.
  */
 
 // --- Shared Helpers ---
@@ -97,6 +98,9 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
           output += `  ←  ${file.path}`;
           output += `  [${file.size_formatted}`;
           if (file.modified) output += `, Modified: ${file.modified}`;
+          // Photo Metadata
+          if (file.metadata?.model) output += `, Cam: ${file.metadata.model}`;
+          if (file.metadata?.iso) output += `, ISO: ${file.metadata.iso}`;
           output += "]";
         }
         output += "\n";
@@ -115,6 +119,18 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
         if (file.modified) bits.push(`Modified: ${file.modified}`);
+
+        // Photo Mode Bits
+        if (file.metadata) {
+          if (file.metadata.model) bits.push(`Camera: ${file.metadata.model}`);
+          if (file.metadata.lens) bits.push(`Lens: ${file.metadata.lens}`);
+          if (file.metadata.iso) bits.push(`ISO: ${file.metadata.iso}`);
+          if (file.metadata.aperture)
+            bits.push(`Aperture: ${file.metadata.aperture}`);
+          if (file.metadata.shutter_speed)
+            bits.push(`Shutter: ${file.metadata.shutter_speed}`);
+        }
+
         if (bits.length) output += `\n   Metadata: ${bits.join(" | ")}`;
       }
       output += "\n\n";
@@ -144,13 +160,16 @@ export const exportAsCSV = (files, options = {}) => {
   // Merged "SearchType" and "FileType" into "Classification"
   let csv = "Name,Path,Classification,Extension";
   if (includeMetadata) {
-    csv += ",Size,Size (Formatted),Modified,Created";
+    // Added Photo Mode Columns
+    csv +=
+      ",Camera,Lens,ISO,Aperture,Shutter,Size,Size (Formatted),Modified,Created";
   }
   csv += "\n";
 
   files.forEach((file) => {
     const classification = getCombinedTypeLabel(file);
     const label = getFileLabelFromName(file.name || file.path);
+    const m = file.metadata || {};
 
     const row = [
       escapeCSV(file.name),
@@ -161,6 +180,11 @@ export const exportAsCSV = (files, options = {}) => {
 
     if (includeMetadata) {
       row.push(
+        escapeCSV(m.model || ""),
+        escapeCSV(m.lens || ""),
+        escapeCSV(m.iso || ""),
+        escapeCSV(m.aperture || ""),
+        escapeCSV(m.shutter_speed || ""),
         file.size || 0,
         escapeCSV(file.size_formatted || ""),
         escapeCSV(file.modified || ""),
@@ -185,7 +209,7 @@ export const exportAsJSON = (files, duplicates = {}, options = {}) => {
       : files.map((f) => ({
           name: f.name,
           path: f.path,
-          classification: getCombinedTypeLabel(f), // Added simplified field
+          classification: getCombinedTypeLabel(f),
           label: getFileLabelFromName(f.name || f.path),
         })),
     duplicates: Object.keys(duplicates).length > 0 ? duplicates : undefined,
@@ -216,7 +240,8 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
         md += `- **${file.name}**\n  - Path: \`${file.path}\`\n`;
         if (includeMetadata) {
           if (file.size_formatted) md += `  - Size: ${file.size_formatted}\n`;
-          if (file.modified) md += `  - Modified: ${file.modified}\n`;
+          const m = file.metadata || {};
+          if (m.model) md += `  - Camera: ${m.model}\n`;
         }
       });
       md += "\n";
@@ -235,6 +260,12 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
         if (file.modified) bits.push(`Modified: ${file.modified}`);
+
+        // Photo Bits
+        const m = file.metadata || {};
+        if (m.model) bits.push(`📷 ${m.model}`);
+        if (m.iso) bits.push(`ISO ${m.iso}`);
+
         if (bits.length) md += `  - ${bits.join(" | ")}\n`;
       }
     });
@@ -280,6 +311,7 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
     const typeBadge = `<span class="badge type-badge">${escapeHTML(semantic)}</span>`;
 
     const label = getFileLabelFromName(file.name || file.path);
+    const m = file.metadata || {};
 
     rows += `
       <tr data-type="${escapeHTML(semantic)}">
@@ -297,6 +329,11 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
         ${
           includeMetadata
             ? `
+          <td>${escapeHTML(m.model || "-")}</td>
+          <td>${escapeHTML(m.lens || "-")}</td>
+          <td>${escapeHTML(m.iso || "-")}</td>
+          <td>${escapeHTML(m.aperture || "-")}</td>
+          <td>${escapeHTML(m.shutter_speed || "-")}</td>
           <td data-val="${file.size || 0}">${escapeHTML(file.size_formatted || "")}</td>
           <td>${escapeHTML(file.modified || "")}</td>
         `
@@ -427,7 +464,19 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
           <th onclick="sortTable(0)">Name / Path ↕</th>
           <th onclick="sortTable(1)">Classification ↕</th>
           <th onclick="sortTable(2)">Ext ↕</th>
-          ${includeMetadata ? `<th onclick="sortTable(3, 'num')">Size ↕</th><th onclick="sortTable(4)">Modified ↕</th>` : ""}
+          ${
+            includeMetadata
+              ? `
+          <th onclick="sortTable(3)">Camera ↕</th>
+          <th onclick="sortTable(4)">Lens ↕</th>
+          <th onclick="sortTable(5)">ISO ↕</th>
+          <th onclick="sortTable(6)">Aperture ↕</th>
+          <th onclick="sortTable(7)">Shutter ↕</th>
+          <th onclick="sortTable(8, 'num')">Size ↕</th>
+          <th onclick="sortTable(9)">Modified ↕</th>
+          `
+              : ""
+          }
         </tr>
       </thead>
       <tbody>
