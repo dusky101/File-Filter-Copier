@@ -18,6 +18,7 @@ import {
   Play,
   Settings,
   Tag,
+  Camera, // --- Added Camera Icon ---
 } from "lucide-react";
 
 /**
@@ -26,6 +27,7 @@ import {
  */
 const sections = [
   { id: "start", icon: FolderSearch, label: "Getting started" },
+  { id: "photo", icon: Camera, label: "Photo Mode" }, // --- Added Photo Mode Section ---
   { id: "quick", icon: Sparkles, label: "Quick Filters" },
   { id: "types", icon: SlidersHorizontal, label: "Filters overview" },
   { id: "cheatsheet", icon: Filter, label: "Filters cheat sheet" },
@@ -46,7 +48,21 @@ const sections = [
 
 const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
   const [active, setActive] = React.useState("start");
+
+  // Prevent body scroll when open
+  React.useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   if (!open) return null;
+
   return (
     <div className="fixed inset-0 z-50">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -56,7 +72,11 @@ const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
             <button
               key={id}
               onClick={() => setActive(id)}
-              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${active === id ? "bg-white dark:bg-slate-800 shadow text-slate-900 dark:text-white" : "text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800/60"}`}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                active === id
+                  ? "bg-white dark:bg-slate-800 shadow text-slate-900 dark:text-white"
+                  : "text-slate-700 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800/60"
+              }`}
             >
               <Icon className="w-4 h-4" />
               {label}
@@ -82,6 +102,8 @@ const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
             {active === "start" && <GettingStarted />}
+            {active === "photo" && <PhotoHelp />}{" "}
+            {/* --- Added Photo Help --- */}
             {active === "quick" && <QuickFiltersHelp />}
             {active === "types" && <FiltersOverview />}
             {active === "cheatsheet" && <CheatSheet />}
@@ -126,6 +148,79 @@ const List = ({ items }) => (
       <li key={i}>{t}</li>
     ))}
   </ul>
+);
+
+// --- NEW: Photo Help Component ---
+const PhotoHelp = () => (
+  <div className="space-y-6">
+    <div>
+      <SectionTitle
+        title="Photo Mode"
+        subtitle="Deep metadata analysis for photographers and archivists"
+      />
+    </div>
+
+    <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700">
+      <h3 className="font-semibold text-slate-900 dark:text-white mb-4">
+        Key Features
+      </h3>
+      <ul className="space-y-4">
+        <li className="flex gap-3">
+          <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg h-fit text-blue-600 dark:text-blue-400">
+            <ScanSearch className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="font-medium text-slate-900 dark:text-white">
+              Deep Metadata Extraction
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              Extracts detailed EXIF data including Camera Model, Lens, ISO,
+              Aperture, Shutter Speed, and Image Dimensions.
+            </div>
+          </div>
+        </li>
+        <li className="flex gap-3">
+          <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-lg h-fit text-emerald-600 dark:text-emerald-400">
+            <Tag className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="font-medium text-slate-900 dark:text-white">
+              Smart Location Data
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              Automatically converts GPS coordinates into readable "City,
+              Country" names. This works entirely offline—no internet required.
+            </div>
+          </div>
+        </li>
+        <li className="flex gap-3">
+          <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg h-fit text-purple-600 dark:text-purple-400">
+            <Clock className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="font-medium text-slate-900 dark:text-white">
+              Date-Based Sorting
+            </div>
+            <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              When copying with the "Date" structure, files are sorted by their
+              actual <strong>Date Taken</strong> (from EXIF), not the file
+              modification date. Ideal for organizing messy archives.
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div className="p-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
+      <div className="font-semibold text-amber-800 dark:text-amber-200 mb-2">
+        Supported Formats
+      </div>
+      <p className="text-sm text-amber-700 dark:text-amber-300">
+        Works with standard images (JPG, PNG), modern formats (HEIC, WEBP), and
+        professional RAW files (CR2, NEF, ARW, DNG, ORF).
+      </p>
+    </div>
+  </div>
 );
 
 const GettingStarted = () => (
