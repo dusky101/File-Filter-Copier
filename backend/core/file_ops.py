@@ -56,11 +56,11 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
                     if date_str:
                         # Parse various EXIF date formats
                         # Standard EXIF: "YYYY:MM:DD HH:MM:SS" or "YYYY-MM-DD ..."
+                        # We replace colons/slashes to normalize to YYYY-MM-DD
                         clean_date = date_str.replace(":", "-").replace("/", "-")[:10]
-                        # Expecting YYYY-MM-DD now
                         dt = datetime.strptime(clean_date, "%Y-%m-%d")
                     else:
-                        # Fallback to file modification time
+                        # Fallback to file modification time if no EXIF date
                         ts = os.path.getmtime(src_path)
                         dt = datetime.fromtimestamp(ts)
                     
@@ -68,7 +68,7 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
                     month = dt.strftime("%m")
                     subfolder = os.path.join(year, month)
                 except Exception:
-                    # Ultimate fallback
+                    # Ultimate fallback if everything fails
                     subfolder = "Unknown_Date"
 
             elif structure == "type":

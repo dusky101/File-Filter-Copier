@@ -47,7 +47,12 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showFilterHub, setShowFilterHub] = useState(false);
   const [filterHubSection, setFilterHubSection] = useState("quick");
+
+  // --- Instructions State ---
   const [showInstructions, setShowInstructions] = useState(false);
+  const [instructionsSection, setInstructionsSection] = useState("start"); // NEW: Track help section
+  // --------------------------
+
   const [showPresetManager, setShowPresetManager] = useState(false);
 
   // --- Dialog States ---
@@ -64,6 +69,7 @@ function App() {
   useEffect(() => {
     if (window.electron && window.electron.onOpenHelp) {
       const removeListener = window.electron.onOpenHelp(() => {
+        setInstructionsSection("start"); // Default to start
         setShowInstructions(true);
       });
       return () => removeListener();
@@ -373,7 +379,10 @@ function App() {
         {/* Header */}
         <Header
           onSettingsClick={() => setShowSettings(true)}
-          onHelpClick={() => setShowInstructions(true)}
+          onHelpClick={() => {
+            setInstructionsSection("start"); // Default help
+            setShowInstructions(true);
+          }}
         />
 
         {/* Settings Panel */}
@@ -560,10 +569,17 @@ function App() {
         open={showFilterHub}
         onClose={() => setShowFilterHub(false)}
         initialSection={filterHubSection}
+        // --- NEW: Handle opening Help from within Filters ---
+        onOpenHelp={(section) => {
+          setInstructionsSection(section);
+          setShowInstructions(true);
+        }}
+        // ----------------------------------------------------
       />
       <InstructionsHub
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
+        initialSection={instructionsSection} // --- NEW: Pass the active section ---
         onOpenAdvanced={() => {
           setShowInstructions(false);
           setFilterHubSection("adv");

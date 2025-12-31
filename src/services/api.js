@@ -29,12 +29,57 @@ const getTimeoutFromSettings = (fallback = 300000) => {
   }
 };
 
+// --- Helper: Standardize File Objects (FIXED) ---
+const mapFileResult = (item) => {
+  if (!item) return null;
+
+  // 1. Handle Backend "FileResult" Object (New Backend Format)
+  // The backend now returns rich objects: { path: "...", name: "...", metadata: {...} }
+  if (typeof item === "object" && !Array.isArray(item)) {
+    // Safety check: if path is missing, we can't use this file
+    if (!item.path) return null;
+
+    return {
+      name: item.name || String(item.path).split(/[/\\]/).pop(),
+      path: item.path,
+      semantic_type: item.semantic_type || "Unclassified",
+      search_tags: item.search_tags || [],
+      metadata: item.metadata || {},
+      size: item.size || 0,
+      size_formatted: item.size_formatted || "0 B",
+      modified: item.modified || "",
+      created: item.created || "",
+    };
+  }
+
+  // 2. Handle Legacy Tuple format [path, type, tags, metadata] (Fallback)
+  // Used if backend logic falls back to raw filter tuples
+  if (Array.isArray(item) && item.length > 0) {
+    const path = item[0];
+    const type = item[1];
+    const tags = item[2];
+    const metadata = item[3] || {};
+
+    return {
+      name: String(path).split(/[/\\]/).pop(),
+      path: String(path),
+      semantic_type: type || "Unclassified",
+      search_tags: tags || [],
+      metadata: metadata,
+      size: 0,
+      size_formatted: "0 B",
+      modified: metadata?.date_taken || "",
+      created: "",
+    };
+  }
+
+  return null;
+};
+
 // Request interceptor for debugging
 apiClient.interceptors.request.use(
   (config) => {
-    console.log(
-      `🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`
-    );
+    // console.log(`🔵 API Request: ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
@@ -46,7 +91,7 @@ apiClient.interceptors.request.use(
 // Response interceptor for error handling
 apiClient.interceptors.response.use(
   (response) => {
-    console.log(`🟢 API Response: ${response.config.url}`, response.data);
+    // console.log(`🟢 API Response: ${response.config.url}`, response.data);
     return response;
   },
   (error) => {
@@ -133,7 +178,28 @@ export const scanFiles = async (filters, options = {}) => {
       headers,
       timeout: effectiveTimeout,
     });
-    return res.data;
+
+    const rawData = res.data;
+
+    // Backend returns ScanResponse: { success: true, files: [...], duplicates: {...}, ... }
+    if (rawData && rawData.success !== false) {
+      const rawFiles = rawData.files || [];
+
+      // Robustly map files, filtering out any errors
+      const mappedFiles = rawFiles.map(mapFileResult).filter((f) => f !== null);
+
+      return {
+        success: true, // Explicitly return success for App.jsx
+        files: mappedFiles,
+        total_files: rawData.total_files || mappedFiles.length,
+        duplicates: rawData.duplicates || {},
+      };
+    }
+
+    return {
+      success: false,
+      error: rawData.error || "Scan failed",
+    };
   } catch (error) {
     return {
       success: false,

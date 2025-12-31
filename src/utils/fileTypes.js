@@ -6,6 +6,7 @@ import {
   Code,
   Archive,
   File,
+  Camera, // --- Added Camera Icon ---
 } from "lucide-react";
 
 /**
@@ -41,6 +42,41 @@ export const fileTypeGroups = {
     },
   ],
   Media: [
+    // --- NEW: Photos Category ---
+    {
+      name: "Photos",
+      icon: Camera,
+      types: [
+        // Standard Photography (Excluded: png, gif, webp, svg, bmp)
+        ".jpg",
+        ".jpeg",
+        ".tiff",
+        ".tif",
+        // High Efficiency
+        ".heic",
+        ".heif",
+        ".avif",
+        // RAW Formats (Professional)
+        ".cr2",
+        ".cr3",
+        ".crw", // Canon
+        ".nef",
+        ".nrw", // Nikon
+        ".arw",
+        ".srf",
+        ".sr2", // Sony
+        ".orf", // Olympus
+        ".rw2", // Panasonic
+        ".raf", // Fujifilm
+        ".dng", // Adobe / Generic
+        ".pef", // Pentax
+        ".x3f", // Sigma
+        ".3fr",
+        ".fff", // Hasselblad
+        ".iiq", // Phase One
+      ],
+    },
+    // ----------------------------
     {
       name: "Images",
       icon: Image,

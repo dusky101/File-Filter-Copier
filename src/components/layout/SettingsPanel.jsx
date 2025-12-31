@@ -281,7 +281,7 @@ const SettingsPanel = ({ isOpen, onClose }) => {
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                 >
                   <option value="en-GB">English (UK)</option>
-                  <option value="en-US">English (US)</option>
+                  {/* <option value="en-US">English (US)</option> */}
                 </select>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   Changes spelling and terminology throughout the application

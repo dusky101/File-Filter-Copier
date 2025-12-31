@@ -1,6 +1,6 @@
 /**
  * Header Component
- * Displays the application logo, title, and settings button
+ * Displays the application logo, title, settings button, and the Photo Mode toggle.
  */
 
 import React from "react";
@@ -12,6 +12,8 @@ const Header = ({ onSettingsClick, onHelpClick }) => {
   const animationsEnabled = useSettingsStore(
     (state) => state.animationsEnabled
   );
+
+  // Connect to the Filter Store for the smart toggle logic
   const { photoMode, togglePhotoMode } = useFilterStore();
 
   return (
@@ -54,7 +56,11 @@ const Header = ({ onSettingsClick, onHelpClick }) => {
             }
           `}
           aria-label="Toggle Photo Mode"
-          title={photoMode ? "Photo Mode Active" : "Enable Photo Mode"}
+          title={
+            photoMode
+              ? "Photo Mode Active: Filters restricted to photos"
+              : "Enable Photo Mode (Auto-selects Photo filters)"
+          }
         >
           <Camera className={`w-5 h-5 ${photoMode ? "text-white" : ""}`} />
           <span className="font-medium text-sm hidden sm:inline">

@@ -82,30 +82,34 @@ const useFilterStore = create(
       // Toggle Actions
       toggleDryRun: () => set((state) => ({ dryRun: !state.dryRun })),
 
-      // NEW: Toggle Photo Mode logic
+      // NEW: Smart Photo Mode Toggle Logic
       togglePhotoMode: () =>
         set((state) => {
           const newState = !state.photoMode;
+          const PHOTOS_KEY = "Photos"; // Must match key in fileTypes.js
 
           if (newState) {
             // TURNING ON:
-            // 1. Force "Date" structure
-            // 2. Auto-select "Image" and "Video" types
-            // 3. Clear manual extension filters (so they don't block RAW/HEIC)
+            // 1. Add "Photos" to selected types without removing others
             const newTypes = new Set(state.selectedFileTypes);
-            newTypes.add("Image");
-            newTypes.add("Video");
+            newTypes.add(PHOTOS_KEY);
 
             return {
               photoMode: true,
-              copyStructure: "date",
+              copyStructure: "date", // Auto-set structure to Date
               selectedFileTypes: newTypes,
-              includeExtensions: "", // Clear this to let the Types take over
+              // We do NOT clear extension filters here, allowing users to add .png if they want
             };
           } else {
             // TURNING OFF:
-            // Just toggle state, leave filters as is (user can adjust)
-            return { photoMode: false };
+            // 1. Remove "Photos" from selection
+            const newTypes = new Set(state.selectedFileTypes);
+            newTypes.delete(PHOTOS_KEY);
+
+            return {
+              photoMode: false,
+              selectedFileTypes: newTypes,
+            };
           }
         }),
 

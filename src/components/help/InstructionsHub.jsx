@@ -46,8 +46,17 @@ const sections = [
   { id: "tips", icon: Info, label: "Tips & Troubleshooting" },
 ];
 
-const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
+const InstructionsHub = ({ open, onClose, onOpenAdvanced, initialSection }) => {
   const [active, setActive] = React.useState("start");
+
+  // --- NEW: Handle Deep Linking ---
+  // If the parent passes an initialSection (e.g. "photo"), switch to it immediately.
+  React.useEffect(() => {
+    if (open && initialSection) {
+      setActive(initialSection);
+    }
+  }, [open, initialSection]);
+  // --------------------------------
 
   // Prevent body scroll when open
   React.useEffect(() => {
@@ -102,8 +111,7 @@ const InstructionsHub = ({ open, onClose, onOpenAdvanced }) => {
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
             {active === "start" && <GettingStarted />}
-            {active === "photo" && <PhotoHelp />}{" "}
-            {/* --- Added Photo Help --- */}
+            {active === "photo" && <PhotoHelp />}
             {active === "quick" && <QuickFiltersHelp />}
             {active === "types" && <FiltersOverview />}
             {active === "cheatsheet" && <CheatSheet />}
@@ -150,7 +158,7 @@ const List = ({ items }) => (
   </ul>
 );
 
-// --- NEW: Photo Help Component ---
+// --- Photo Help Component ---
 const PhotoHelp = () => (
   <div className="space-y-6">
     <div>

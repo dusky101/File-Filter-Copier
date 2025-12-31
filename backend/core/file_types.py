@@ -1,6 +1,27 @@
 # --- Filename or extension-based patterns ---
 # Aligned with UI AdvancedFiltersPanel.jsx fileTypeGroups while keeping existing types for compatibility
 FILE_TYPE_PATTERNS = {
+    # --- NEW: Specific Photo Mode Filter ---
+    "Photos": [
+        # Standard Photography (Excluded: png, gif, webp, svg, bmp)
+        ".jpg", ".jpeg", ".tiff", ".tif",
+        # High Efficiency
+        ".heic", ".heif", ".avif",
+        # RAW Formats (Professional)
+        ".cr2", ".cr3", ".crw",  # Canon
+        ".nef", ".nrw",          # Nikon
+        ".arw", ".srf", ".sr2",  # Sony
+        ".orf",                  # Olympus
+        ".rw2",                  # Panasonic
+        ".raf",                  # Fujifilm
+        ".dng",                  # Adobe / Generic
+        ".pef",                  # Pentax
+        ".x3f",                  # Sigma
+        ".3fr", ".fff",          # Hasselblad
+        ".iiq"                   # Phase One
+    ],
+    # ---------------------------------------
+
     # UI: Documents
     "Text Documents": [".txt", ".doc", ".docx", ".pdf", ".rtf", ".odt", ".md", ".tex", ".wpd"],
     "Spreadsheets": [".xls", ".xlsx", ".csv", ".ods", ".tsv"],
@@ -76,6 +97,9 @@ FILE_TYPE_PATTERNS = {
 
 # --- Content-based markers for deep scan ---
 CONTENT_MARKERS = {
+    # New Photos Marker (Reuse Images logic)
+    "Photos": ["Exif", "RGB", "Alpha Channel", "Layer", "ftyp", "JFIF", "MM", "II"],
+
     # UI: Documents
     "Text Documents": ["Title:", "Author:", "Table of Contents", "Lorem ipsum"],
     "Spreadsheets": ["Sheet1", "SUM(", "VLOOKUP", "PivotTable"],
@@ -132,6 +156,7 @@ CONTENT_MARKERS = {
 # --- UI color mapping for semantic types ---
 TYPE_COLORS = {
     # UI-aligned
+    "Photos": "#f3e5f5", # Purple-ish for Photo Mode
     "Text Documents": "#e3f2fd",
     "Spreadsheets": "#fff3e0",
     "Presentations": "#ede7f6",
@@ -196,7 +221,7 @@ TYPE_GROUPS = {
 
     # UI-aligned groups
     "Documents": ["Text Documents", "Spreadsheets", "Presentations"],
-    "Media": ["Images", "Audio", "Video"],
+    "Media": ["Photos", "Images", "Audio", "Video"], # Added Photos here
     "Development": ["Code", "Web", "Config", "Scripts"],
     "System": ["Compressed", "Executables", "Fonts", "Database"]
 }
