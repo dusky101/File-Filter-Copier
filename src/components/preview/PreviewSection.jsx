@@ -4,8 +4,6 @@ import {
   Download,
   Settings2,
   Search,
-  SortAsc,
-  SortDesc,
   Filter,
   X,
   Copy,
@@ -38,7 +36,6 @@ const PreviewSection = ({ onOpenSettings }) => {
   } = useFilterStore();
 
   const {
-    animationsEnabled,
     defaultExportFormat,
     setDefaultExportFormat,
     includeMetadataInExport,
@@ -153,40 +150,50 @@ const PreviewSection = ({ onOpenSettings }) => {
 
     result.sort((a, b) => {
       let valA, valB;
-      switch (sortBy) {
-        case "name":
-          valA = a.name.toLowerCase();
-          valB = b.name.toLowerCase();
-          break;
-        case "size":
-          valA = a.size;
-          valB = b.size;
-          break;
-        case "modified":
-          valA = a.modified;
-          valB = b.modified;
-          break;
-        case "created":
-          valA = a.created;
-          valB = b.created;
-          break;
-        case "ext":
-          valA = getExtLower(a);
-          valB = getExtLower(b);
-          break;
-        case "searchType":
-          const st = (f) =>
-            (Array.isArray(f.search_tags) && f.search_tags.length
-              ? f.search_tags.join(", ")
-              : f.semantic_type || "Unclassified"
-            ).toLowerCase();
-          valA = st(a);
-          valB = st(b);
-          break;
-        default:
-          valA = a.name.toLowerCase();
-          valB = b.name.toLowerCase();
+
+      // --- UPDATED SORTING LOGIC ---
+      if (sortBy.startsWith("metadata.")) {
+        // Handle metadata keys like "metadata.model" or "metadata.iso"
+        const key = sortBy.split(".")[1];
+        valA = a.metadata?.[key] || "";
+        valB = b.metadata?.[key] || "";
+      } else {
+        switch (sortBy) {
+          case "name":
+            valA = a.name.toLowerCase();
+            valB = b.name.toLowerCase();
+            break;
+          case "size":
+            valA = a.size;
+            valB = b.size;
+            break;
+          case "modified":
+            valA = a.modified;
+            valB = b.modified;
+            break;
+          case "created":
+            valA = a.created;
+            valB = b.created;
+            break;
+          case "ext":
+            valA = getExtLower(a);
+            valB = getExtLower(b);
+            break;
+          case "searchType":
+            const st = (f) =>
+              (Array.isArray(f.search_tags) && f.search_tags.length
+                ? f.search_tags.join(", ")
+                : f.semantic_type || "Unclassified"
+              ).toLowerCase();
+            valA = st(a);
+            valB = st(b);
+            break;
+          default:
+            valA = a.name.toLowerCase();
+            valB = b.name.toLowerCase();
+        }
       }
+
       if (valA < valB) return sortOrder === "asc" ? -1 : 1;
       if (valA > valB) return sortOrder === "asc" ? 1 : -1;
       return 0;
@@ -316,6 +323,200 @@ const PreviewSection = ({ onOpenSettings }) => {
     } catch {}
   };
 
+  // --- Standard Columns Definition (Memoized) ---
+  // This prevents column regeneration on every render
+  const standardColumns = useMemo(() => {
+    return [
+      { key: "name", label: "Name", getValue: (f) => f.name },
+      {
+        key: "searchType",
+        label: "Search Type",
+        getValue: (f) =>
+          Array.isArray(f.search_tags) && f.search_tags.length
+            ? f.search_tags.join(", ")
+            : f.semantic_type || "Unclassified",
+        renderCell: (f) =>
+          Array.isArray(f.search_tags) && f.search_tags.length ? (
+            <div className="flex flex-wrap gap-1">
+              {f.search_tags.map((t, i) => (
+                <span
+                  key={i}
+                  className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              {f.semantic_type || "Unclassified"}
+            </span>
+          ),
+      },
+      ...(showFileSize
+        ? [
+            {
+              key: "size",
+              label: "Size",
+              getValue: (f) => f.size_formatted || "",
+            },
+          ]
+        : []),
+      ...(showModifiedDate
+        ? [
+            {
+              key: "modified",
+              label: "Modified",
+              getValue: (f) => f.modified || "",
+            },
+          ]
+        : []),
+      ...(showCreatedDate
+        ? [
+            {
+              key: "created",
+              label: "Created",
+              getValue: (f) => f.created || "",
+            },
+          ]
+        : []),
+      ...(showFileType
+        ? [
+            {
+              key: "ext",
+              label: "Extension",
+              getValue: (f) => getExtUpper(f),
+              headerExtra: () => (
+                <span className="ml-1 inline-flex items-center">
+                  <button
+                    title="Filter by extension"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExtFilterOpen((v) => !v);
+                    }}
+                    className={`p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 ${
+                      extFilterIsActive ? "text-blue-600" : "text-slate-500"
+                    }`}
+                  >
+                    <Filter className="w-3.5 h-3.5" />
+                  </button>
+                  {extFilterOpen && (
+                    <div
+                      ref={extPopoverRef}
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute top-full right-6 mt-2 z-50 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-3"
+                    >
+                      <div className="text-xs font-semibold mb-2 text-slate-900 dark:text-white">
+                        Filter: Extension
+                      </div>
+                      <div className="mb-2">
+                        <input
+                          value={extFilterQuery}
+                          onChange={(e) => setExtFilterQuery(e.target.value)}
+                          placeholder="Search extensions..."
+                          className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="max-h-56 overflow-auto pr-1">
+                        <label className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={extAll}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setExtAll(checked);
+                              setExtSelected(
+                                checked ? new Set(allExtensions) : new Set()
+                              );
+                            }}
+                          />
+                          <span>(Show All)</span>
+                        </label>
+                        {filteredExtOptions.map((ext) => {
+                          const checked = extAll ? true : extSelected.has(ext);
+                          return (
+                            <label
+                              key={ext}
+                              className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setExtSelected((prev) => {
+                                    const next = extAll
+                                      ? new Set(allExtensions)
+                                      : new Set(prev);
+                                    if (e.target.checked) next.add(ext);
+                                    else next.delete(ext);
+                                    const allOn =
+                                      next.size >= allExtensions.length;
+                                    setExtAll(allOn);
+                                    return allOn
+                                      ? new Set(allExtensions)
+                                      : next;
+                                  });
+                                }}
+                              />
+                              <span>{ext}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between">
+                        <div className="flex gap-2">
+                          <button
+                            className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                            onClick={() => {
+                              setExtAll(true);
+                              setExtSelected(new Set(allExtensions));
+                            }}
+                          >
+                            Select All
+                          </button>
+                          <button
+                            className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                            onClick={() => {
+                              setExtAll(false);
+                              setExtSelected(new Set());
+                            }}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <button
+                          className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+                          onClick={() => setExtFilterOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </span>
+              ),
+            },
+          ]
+        : []),
+      ...(showFullPath
+        ? [{ key: "path", label: "Path", getValue: (f) => f.path }]
+        : []),
+    ];
+  }, [
+    showFileSize,
+    showModifiedDate,
+    showCreatedDate,
+    showFileType,
+    showFullPath,
+    extFilterIsActive,
+    extFilterOpen,
+    extFilterQuery,
+    filteredExtOptions,
+    allExtensions,
+    extAll,
+    extSelected,
+  ]);
+
   // --- Render ---
 
   if (safeFilteredFiles.length === 0) {
@@ -387,7 +588,7 @@ const PreviewSection = ({ onOpenSettings }) => {
 
             <button
               onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg font-medium shadow hover:shadow-lg transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-linear-to-r from-green-600 to-emerald-600 text-white rounded-lg font-medium shadow hover:shadow-lg transition-all"
             >
               <Download className="w-4 h-4" />
               <span>Export</span>
@@ -434,7 +635,7 @@ const PreviewSection = ({ onOpenSettings }) => {
         </select>
       </div>
 
-      {/* Copy Selected Toolbar (Only visible when files are selected) */}
+      {/* Copy Selected Toolbar */}
       <div className="px-6 pb-3 flex items-center justify-between">
         <div className="text-sm text-slate-600 dark:text-slate-400">
           {selectedFiles.size > 0
@@ -483,186 +684,7 @@ const PreviewSection = ({ onOpenSettings }) => {
         deselectAll={deselectAll}
         selectionKey="path"
         totalSelectableCount={processedFiles.length}
-        columns={[
-          { key: "name", label: "Name", getValue: (f) => f.name },
-          {
-            key: "searchType",
-            label: "Search Type",
-            getValue: (f) =>
-              Array.isArray(f.search_tags) && f.search_tags.length
-                ? f.search_tags.join(", ")
-                : f.semantic_type || "Unclassified",
-            renderCell: (f) =>
-              Array.isArray(f.search_tags) && f.search_tags.length ? (
-                <div className="flex flex-wrap gap-1">
-                  {f.search_tags.map((t, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200"
-                    >
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <span className="inline-flex px-2 py-0.5 text-[11px] font-medium rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                  {f.semantic_type || "Unclassified"}
-                </span>
-              ),
-          },
-          ...(showFileSize
-            ? [
-                {
-                  key: "size",
-                  label: "Size",
-                  getValue: (f) => f.size_formatted || "",
-                },
-              ]
-            : []),
-          ...(showModifiedDate
-            ? [
-                {
-                  key: "modified",
-                  label: "Modified",
-                  getValue: (f) => f.modified || "",
-                },
-              ]
-            : []),
-          ...(showCreatedDate
-            ? [
-                {
-                  key: "created",
-                  label: "Created",
-                  getValue: (f) => f.created || "",
-                },
-              ]
-            : []),
-          ...(showFileType
-            ? [
-                {
-                  key: "ext",
-                  label: "Extension",
-                  getValue: (f) => getExtUpper(f),
-                  headerExtra: () => (
-                    <span className="ml-1 inline-flex items-center">
-                      <button
-                        title="Filter by extension"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setExtFilterOpen((v) => !v);
-                        }}
-                        className={`p-1 rounded hover:bg-slate-200/60 dark:hover:bg-slate-700/60 ${
-                          extFilterIsActive ? "text-blue-600" : "text-slate-500"
-                        }`}
-                      >
-                        <Filter className="w-3.5 h-3.5" />
-                      </button>
-                      {extFilterOpen && (
-                        <div
-                          ref={extPopoverRef}
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute top-full right-6 mt-2 z-50 w-72 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-3"
-                        >
-                          <div className="text-xs font-semibold mb-2 text-slate-900 dark:text-white">
-                            Filter: Extension
-                          </div>
-                          <div className="mb-2">
-                            <input
-                              value={extFilterQuery}
-                              onChange={(e) =>
-                                setExtFilterQuery(e.target.value)
-                              }
-                              placeholder="Search extensions..."
-                              className="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
-                            />
-                          </div>
-                          <div className="max-h-56 overflow-auto pr-1">
-                            <label className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300">
-                              <input
-                                type="checkbox"
-                                checked={extAll}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  setExtAll(checked);
-                                  setExtSelected(
-                                    checked ? new Set(allExtensions) : new Set()
-                                  );
-                                }}
-                              />
-                              <span>(Show All)</span>
-                            </label>
-                            {filteredExtOptions.map((ext) => {
-                              const checked = extAll
-                                ? true
-                                : extSelected.has(ext);
-                              return (
-                                <label
-                                  key={ext}
-                                  className="flex items-center gap-2 py-1 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 px-1 rounded text-slate-700 dark:text-slate-300"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(e) => {
-                                      setExtSelected((prev) => {
-                                        const next = extAll
-                                          ? new Set(allExtensions)
-                                          : new Set(prev);
-                                        if (e.target.checked) next.add(ext);
-                                        else next.delete(ext);
-                                        const allOn =
-                                          next.size >= allExtensions.length;
-                                        setExtAll(allOn);
-                                        return allOn
-                                          ? new Set(allExtensions)
-                                          : next;
-                                      });
-                                    }}
-                                  />
-                                  <span>{ext}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                          <div className="mt-3 flex items-center justify-between">
-                            <div className="flex gap-2">
-                              <button
-                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                onClick={() => {
-                                  setExtAll(true);
-                                  setExtSelected(new Set(allExtensions));
-                                }}
-                              >
-                                Select All
-                              </button>
-                              <button
-                                className="text-xs px-2 py-1 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                onClick={() => {
-                                  setExtAll(false);
-                                  setExtSelected(new Set());
-                                }}
-                              >
-                                Clear
-                              </button>
-                            </div>
-                            <button
-                              className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
-                              onClick={() => setExtFilterOpen(false)}
-                            >
-                              Close
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </span>
-                  ),
-                },
-              ]
-            : []),
-          ...(showFullPath
-            ? [{ key: "path", label: "Path", getValue: (f) => f.path }]
-            : []),
-        ]}
+        columns={standardColumns}
       />
 
       {/* Pagination Footer */}

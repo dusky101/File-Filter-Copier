@@ -16,6 +16,7 @@ const useFilterStore = create(
 
       // --- Main Toggles ---
       dryRun: true,
+      photoMode: false, // NEW: Photo Mode State
 
       // --- Basic Filters ---
       includeExtensions: "",
@@ -80,6 +81,37 @@ const useFilterStore = create(
 
       // Toggle Actions
       toggleDryRun: () => set((state) => ({ dryRun: !state.dryRun })),
+
+      // NEW: Smart Photo Mode Toggle Logic
+      togglePhotoMode: () =>
+        set((state) => {
+          const newState = !state.photoMode;
+          const PHOTOS_KEY = "Photos"; // Must match key in fileTypes.js
+
+          if (newState) {
+            // TURNING ON:
+            // 1. Add "Photos" to selected types without removing others
+            const newTypes = new Set(state.selectedFileTypes);
+            newTypes.add(PHOTOS_KEY);
+
+            return {
+              photoMode: true,
+              copyStructure: "date", // Auto-set structure to Date
+              selectedFileTypes: newTypes,
+              // We do NOT clear extension filters here, allowing users to add .png if they want
+            };
+          } else {
+            // TURNING OFF:
+            // 1. Remove "Photos" from selection
+            const newTypes = new Set(state.selectedFileTypes);
+            newTypes.delete(PHOTOS_KEY);
+
+            return {
+              photoMode: false,
+              selectedFileTypes: newTypes,
+            };
+          }
+        }),
 
       // Filter Actions
       setIncludeExtensions: (val) => set({ includeExtensions: val }),
@@ -183,6 +215,7 @@ const useFilterStore = create(
           nameRegexExclude: "",
           excludeDuplicates: false,
           copyStructure: "flat",
+          photoMode: false,
         })),
 
       resetToBlank: () =>
@@ -209,6 +242,7 @@ const useFilterStore = create(
           nameRegexExclude: "",
           excludeDuplicates: false,
           copyStructure: "flat",
+          photoMode: false,
         }),
 
       // =========================================
@@ -239,6 +273,8 @@ const useFilterStore = create(
           folder: s.sourceFolder,
           destination: s.destinationFolder,
           output_folder_name: s.outputFolderName,
+          dry_run: s.dryRun,
+          photo_mode: s.photoMode, // SENT TO API
 
           // Filters
           include_exts: splitCSV(s.includeExtensions), // Maps to API 'include_exts'
@@ -303,6 +339,7 @@ const useFilterStore = create(
 
           // Strings / Booleans
           dryRun: config.dry_run ?? true,
+          photoMode: config.photo_mode ?? false,
           deepScan: config.deep_scan ?? false,
           deepScanMode: config.deep_scan_mode || "any",
           deepScanMaxSizeMB: config.deep_scan_max_size_bytes
@@ -377,6 +414,7 @@ const useFilterStore = create(
         excludeExtensions: state.excludeExtensions,
         sizeFilter: state.sizeFilter,
         timeFilter: state.timeFilter,
+        photoMode: state.photoMode,
         // Convert Sets to Arrays for JSON storage
         selectedFileTypes: Array.from(state.selectedFileTypes),
         selectedProjectTypes: Array.from(state.selectedProjectTypes),

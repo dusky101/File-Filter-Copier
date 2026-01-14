@@ -1,6 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
+import useFilterStore from "../../stores/useFilterStore";
+import useSettingsStore from "../../stores/useSettingsStore";
 
-const px = (n) => `${Math.max(60, Math.min(1200, n))}px`;
+// Helper to sanitize width
+const px = (n) => `${Math.max(60, Math.min(1200, n || 150))}px`;
 
 const PreviewSectionTable = ({
   files,
@@ -8,23 +11,134 @@ const PreviewSectionTable = ({
   sortBy,
   sortOrder,
   onSort,
-  // Selection props (new)
   selectedFiles,
   toggleFileSelection,
   selectAll,
   deselectAll,
   selectionKey = "path",
-  totalSelectableCount, // total items in the current processed list (not just the page)
+  totalSelectableCount,
 }) => {
-  const [colWidths, setColWidths] = useState(() =>
-    Object.fromEntries(columns.map((c) => [c.key, 200]))
-  );
+  const { photoMode } = useFilterStore();
+  const {
+    showCamera,
+    showLens,
+    showISO,
+    showAperture,
+    showShutter,
+    showDimensions,
+    showLocation,
+  } = useSettingsStore();
 
-  // Selection enablement
+  // --- DYNAMIC COLUMNS LOGIC ---
+  const effectiveColumns = useMemo(() => {
+    if (!photoMode) return columns;
+
+    const newCols = [...columns];
+    const nameIndex = newCols.findIndex(
+      (c) => c.key.toLowerCase() === "name" || c.label?.toLowerCase() === "name"
+    );
+    const insertIndex = nameIndex >= 0 ? nameIndex + 1 : newCols.length;
+
+    const photoCols = [];
+    if (showCamera)
+      photoCols.push({
+        key: "metadata.model",
+        label: "Camera",
+        width: 180,
+        getValue: (f) => f.metadata?.model || "-",
+        sortable: true,
+      });
+    if (showLens)
+      photoCols.push({
+        key: "metadata.lens",
+        label: "Lens",
+        width: 200,
+        getValue: (f) => f.metadata?.lens || "-",
+        sortable: true,
+      });
+    if (showISO)
+      photoCols.push({
+        key: "metadata.iso",
+        label: "ISO",
+        width: 80,
+        getValue: (f) => f.metadata?.iso || "-",
+        sortable: true,
+      });
+    if (showAperture)
+      photoCols.push({
+        key: "metadata.aperture",
+        label: "Aperture",
+        width: 90,
+        getValue: (f) => f.metadata?.aperture || "-",
+        sortable: true,
+      });
+    if (showShutter)
+      photoCols.push({
+        key: "metadata.shutter_speed",
+        label: "Shutter",
+        width: 100,
+        getValue: (f) => f.metadata?.shutter_speed || "-",
+        sortable: true,
+      });
+    if (showDimensions)
+      photoCols.push({
+        key: "metadata.dimensions",
+        label: "Dimensions",
+        width: 120,
+        getValue: (f) => f.metadata?.dimensions || "-",
+        sortable: true,
+      });
+    if (showLocation)
+      photoCols.push({
+        key: "metadata.location",
+        label: "Location",
+        width: 180,
+        getValue: (f) => f.metadata?.location || "-",
+        sortable: true,
+      });
+
+    newCols.splice(insertIndex, 0, ...photoCols);
+    return newCols;
+  }, [
+    columns,
+    photoMode,
+    showCamera,
+    showLens,
+    showISO,
+    showAperture,
+    showShutter,
+    showDimensions,
+    showLocation,
+  ]);
+
+  // --- RESIZING LOGIC ---
+  const [colWidths, setColWidths] = useState({});
+
+  // Sync widths when columns change
+  useEffect(() => {
+    setColWidths((prev) => {
+      const next = { ...prev };
+      effectiveColumns.forEach((c) => {
+        if (next[c.key] === undefined) {
+          next[c.key] = c.width || 150;
+        }
+      });
+      return next;
+    });
+  }, [effectiveColumns]);
+
+  // --- NEW: Calculate Total Table Width ---
+  // This allows the table to expand beyond 100% and scroll horizontally
+  const totalTableWidth = useMemo(() => {
+    const checkboxWidth = selectedFiles ? 50 : 0;
+    const colsWidth = effectiveColumns.reduce((acc, c) => {
+      return acc + (colWidths[c.key] || c.width || 150);
+    }, 0);
+    return checkboxWidth + colsWidth;
+  }, [effectiveColumns, colWidths, selectedFiles]);
+
   const selectionEnabled =
     selectedFiles instanceof Set && typeof toggleFileSelection === "function";
-
-  // Header checkbox state reflects GLOBAL selection across processed list
   const headerCheckboxRef = useRef(null);
   const totalCount = totalSelectableCount ?? files.length;
   const allSelectedGlobal =
@@ -38,234 +152,184 @@ const PreviewSectionTable = ({
     }
   }, [someSelectedGlobal]);
 
-  // Range selection for TSV copy (columns only, excludes the checkbox column)
-  const [sel, setSel] = useState(null); // { rs, cs, re, ce }
+  const [sel, setSel] = useState(null);
   const selectingRef = useRef(false);
 
+  const cellMouseDown = (r, c, e) => {
+    if (e.shiftKey && sel) {
+      setSel((prev) => ({ ...prev, re: r, ce: c }));
+    } else {
+      selectingRef.current = true;
+      setSel({ rs: r, cs: c, re: r, ce: c });
+    }
+  };
+
+  const cellMouseEnter = (r, c) => {
+    if (selectingRef.current) {
+      setSel((prev) => ({ ...prev, re: r, ce: c }));
+    }
+  };
+
+  const endSelection = () => {
+    selectingRef.current = false;
+  };
+
   useEffect(() => {
-    setColWidths((w) => {
-      const next = { ...w };
-      columns.forEach((c) => {
-        if (next[c.key] == null) next[c.key] = 200;
-      });
-      Object.keys(next).forEach((k) => {
-        if (!columns.find((c) => c.key === k)) delete next[k];
-      });
-      return next;
-    });
-  }, [columns]);
-
-  const startResize = (key, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startW = colWidths[key] || 200;
-
-    const onMove = (me) => {
-      const delta = me.clientX - startX;
-      setColWidths((w) => ({ ...w, [key]: startW + delta }));
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove, true);
-      window.removeEventListener("mouseup", onUp, true);
-      document.body.style.cursor = "";
-    };
-    document.body.style.cursor = "col-resize";
-    window.addEventListener("mousemove", onMove, true);
-    window.addEventListener("mouseup", onUp, true);
-  };
-
-  const autoFit = (key) => {
-    const col = columns.find((c) => c.key === key);
-    if (!col) return;
-
-    const headerLen = (col.label || "").length;
-    const sampleSize = Math.min(500, files.length);
-    const values = files.slice(0, sampleSize).map((f) => {
-      const v = (col.getValue ? col.getValue(f) : f[col.key]) ?? "";
-      return String(v);
-    });
-
-    const maxLen = Math.max(headerLen, ...values.map((s) => s.length));
-    const charWidth = maxLen > 100 ? 8.5 : 9;
-    const padding = 48;
-    const calculatedWidth = Math.round(maxLen * charWidth + padding);
-    const width = Math.min(1200, Math.max(80, calculatedWidth));
-
-    setColWidths((w) => ({ ...w, [key]: width }));
-  };
-
-  const headerClick = (key) => {
-    if (!onSort) return;
-    onSort(key);
-  };
-
-  // Cell range selection
-  const cellMouseDown = (ri, ci, e) => {
-    e.preventDefault();
-    selectingRef.current = true;
-    setSel({ rs: ri, cs: ci, re: ri, ce: ci });
-  };
-  const cellMouseEnter = (ri, ci) => {
-    if (!selectingRef.current) return;
-    setSel((s) => (s ? { ...s, re: ri, ce: ci } : s));
-  };
-  useEffect(() => {
-    const up = () => (selectingRef.current = false);
-    window.addEventListener("mouseup", up);
-    return () => window.removeEventListener("mouseup", up);
+    window.addEventListener("mouseup", endSelection);
+    return () => window.removeEventListener("mouseup", endSelection);
   }, []);
 
-  const isSelected = (ri, ci) => {
+  useEffect(() => {
+    const handleCopy = (e) => {
+      if (!sel) return;
+      const r1 = Math.min(sel.rs, sel.re);
+      const r2 = Math.max(sel.rs, sel.re);
+      const c1 = Math.min(sel.cs, sel.ce);
+      const c2 = Math.max(sel.cs, sel.ce);
+
+      const rows = [];
+      for (let i = r1; i <= r2; i++) {
+        const rowData = [];
+        for (let j = c1; j <= c2; j++) {
+          const col = effectiveColumns[j];
+          const f = files[i];
+          const val = col.getValue ? col.getValue(f) : f[col.key];
+          rowData.push(val ?? "");
+        }
+        rows.push(rowData.join("\t"));
+      }
+      e.clipboardData.setData("text/plain", rows.join("\n"));
+      e.preventDefault();
+    };
+    document.addEventListener("copy", handleCopy);
+    return () => document.removeEventListener("copy", handleCopy);
+  }, [sel, files, effectiveColumns]);
+
+  const isSelected = (r, c) => {
     if (!sel) return false;
-    const rs = Math.min(sel.rs, sel.re);
-    const re = Math.max(sel.rs, sel.re);
-    const cs = Math.min(sel.cs, sel.ce);
-    const ce = Math.max(sel.cs, sel.ce);
-    return ri >= rs && ri <= re && ci >= cs && ci <= ce;
+    const r1 = Math.min(sel.rs, sel.re);
+    const r2 = Math.max(sel.rs, sel.re);
+    const c1 = Math.min(sel.cs, sel.ce);
+    const c2 = Math.max(sel.cs, sel.ce);
+    return r >= r1 && r <= r2 && c >= c1 && c <= c2;
   };
 
-  // Copy selection as TSV
-  useEffect(() => {
-    const onKey = async (e) => {
-      const meta = e.metaKey || e.ctrlKey;
-      if (!meta || e.key.toLowerCase() !== "c" || !sel) return;
-      e.preventDefault();
-      const rs = Math.min(sel.rs, sel.re);
-      const re = Math.max(sel.rs, sel.re);
-      const cs = Math.min(sel.cs, sel.ce);
-      const ce = Math.max(sel.cs, sel.ce);
+  const handleResizeStart = (e, key) => {
+    e.preventDefault();
+    e.stopPropagation(); // Stop sorting event
+    const startX = e.clientX;
+    const startW = colWidths[key] || 150;
 
-      const cols = columns.slice(cs, ce + 1);
-      const rows = files.slice(rs, re + 1);
-      const lines = [];
-      lines.push(cols.map((c) => c.label).join("\t"));
-      for (const f of rows) {
-        const row = cols.map((c) => {
-          const v = c.getValue ? c.getValue(f) : f[c.key];
-          return String(v ?? "");
-        });
-        lines.push(row.join("\t"));
-      }
-      try {
-        await navigator.clipboard.writeText(lines.join("\n"));
-      } catch {}
+    const onMove = (mv) => {
+      const diff = mv.clientX - startX;
+      setColWidths((prev) => ({ ...prev, [key]: Math.max(50, startW + diff) }));
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [sel, columns, files]);
 
-  const headerSortIcon = (key) => {
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  const handleHeaderClick = (col) => {
+    if (onSort && col.sortable !== false) {
+      onSort(col.key);
+    }
+  };
+
+  const getSortIcon = (key) => {
     if (sortBy !== key) return null;
-    return (
-      <span className="ml-1 text-slate-500">
-        {sortOrder === "asc" ? "▲" : "▼"}
-      </span>
-    );
+    return sortOrder === "asc" ? " ↑" : " ↓";
   };
 
   return (
-    <div className="overflow-x-auto min-h-[320px]">
-      <table className="w-full select-none table-fixed">
-        <thead className="bg-slate-50 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-700">
+    <div className="flex-1 overflow-auto relative select-none">
+      <table
+        className="border-collapse text-left relative"
+        // --- KEY CHANGE: Fixed layout + calculated width ---
+        style={{ width: `${totalTableWidth}px`, tableLayout: "fixed" }}
+      >
+        <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs uppercase font-semibold shadow-sm">
           <tr>
-            {/* Selection header (global select all) */}
-            {selectionEnabled ? (
+            {selectionEnabled && (
               <th
-                className="px-4 py-3 text-left"
-                style={{ width: "56px", userSelect: "none" }}
+                className="sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 px-3 py-2 text-center border-b border-r border-slate-200 dark:border-slate-700"
+                style={{ width: "50px" }} // Fixed width for checkbox
               >
                 <input
-                  ref={headerCheckboxRef}
                   type="checkbox"
+                  ref={headerCheckboxRef}
                   checked={allSelectedGlobal}
-                  onChange={(e) =>
-                    e.target.checked ? selectAll?.() : deselectAll?.()
-                  }
-                  onClick={(e) => e.stopPropagation()}
-                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  title={
-                    allSelectedGlobal ? "Deselect all rows" : "Select all rows"
-                  }
-                  aria-label={
-                    allSelectedGlobal ? "Deselect all rows" : "Select all rows"
-                  }
+                  onChange={(e) => {
+                    if (e.target.checked) selectAll?.();
+                    else deselectAll?.();
+                  }}
+                  className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
                 />
               </th>
-            ) : null}
+            )}
 
-            {columns.map((c) => (
+            {effectiveColumns.map((c) => (
               <th
                 key={c.key}
-                role="button"
-                tabIndex={0}
-                onClick={() => headerClick(c.key)}
-                onDoubleClick={() => autoFit(c.key)}
-                style={{ width: px(colWidths[c.key]), userSelect: "none" }}
-                className="relative px-4 py-3 text-left text-sm font-semibold tracking-wide text-slate-800 dark:text-slate-200 hover:bg-slate-100/70 dark:hover:bg-slate-800/60 cursor-pointer"
+                style={{ width: px(colWidths[c.key] || c.width) }}
+                className="group px-4 py-2 border-b border-r border-slate-200 dark:border-slate-700 whitespace-nowrap overflow-hidden relative"
               >
-                <span className="inline-flex items-center w-full">
-                  <span className="flex-1 truncate">{c.label}</span>
-                  {headerSortIcon(c.key)}
-                  {c.headerExtra ? (
-                    <span
-                      className="ml-1 inline-flex flex-shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {typeof c.headerExtra === "function"
-                        ? c.headerExtra()
-                        : c.headerExtra}
-                    </span>
-                  ) : null}
-                </span>
                 <div
-                  onMouseDown={(e) => startResize(c.key, e)}
+                  className={`flex items-center gap-1 ${onSort ? "cursor-pointer hover:text-primary" : ""}`}
+                  onClick={() => handleHeaderClick(c)}
+                >
+                  {c.label}
+                  <span className="text-xs font-bold text-primary">
+                    {getSortIcon(c.key)}
+                  </span>
+                </div>
+                {/* Resizer Handle */}
+                <div
+                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-400/50 z-10"
+                  onMouseDown={(e) => handleResizeStart(e, c.key)}
                   onClick={(e) => e.stopPropagation()}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    autoFit(c.key);
-                  }}
-                  className="absolute top-0 right-0 h-full w-3 cursor-col-resize hover:bg-blue-400/30"
-                  title="Drag to resize. Double‑click to auto‑fit."
                 />
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+        <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
           {files.map((f, ri) => (
             <tr
-              key={ri}
-              className="hover:bg-slate-50 dark:hover:bg-slate-700/50"
+              key={f.path}
+              className={`
+                group transition-colors 
+                ${
+                  selectedFiles?.has(f[selectionKey])
+                    ? "bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                }
+              `}
             >
-              {/* Row selection cell (excluded from range selection) */}
               {selectionEnabled ? (
                 <td
-                  className="px-4 py-3"
-                  style={{ width: "56px" }}
-                  onMouseDown={(e) => e.stopPropagation()}
+                  className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/50 px-3 py-2 text-center border-r border-slate-100 dark:border-slate-800"
+                  style={{ width: "50px" }}
                 >
                   {(() => {
-                    const id = f?.[selectionKey];
-                    const checked = selectedFiles.has(id);
+                    const isSel = selectedFiles.has(f[selectionKey]);
                     return (
                       <input
                         type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          if (id != null) toggleFileSelection(id);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                        title={checked ? "Deselect row" : "Select row"}
-                        aria-label={checked ? "Deselect row" : "Select row"}
+                        checked={isSel}
+                        onChange={() => toggleFileSelection(f[selectionKey])}
+                        className="rounded border-slate-300 dark:border-slate-600 text-primary focus:ring-primary"
                       />
                     );
                   })()}
                 </td>
               ) : null}
 
-              {columns.map((c, ci) => {
+              {effectiveColumns.map((c, ci) => {
                 const text = c.getValue ? c.getValue(f) : f[c.key];
                 const content =
                   typeof c.renderCell === "function"
@@ -273,18 +337,19 @@ const PreviewSectionTable = ({
                     : String(text ?? "");
                 const selected = isSelected(ri, ci);
                 const style = {
-                  width: px(colWidths[c.key]),
+                  width: px(colWidths[c.key] || c.width),
                   boxShadow: selected
                     ? "inset 0 0 0 2px rgba(16,185,129,1)"
                     : undefined,
                 };
+
                 return (
                   <td
                     key={c.key}
                     onMouseDown={(e) => cellMouseDown(ri, ci, e)}
                     onMouseEnter={() => cellMouseEnter(ri, ci)}
                     style={style}
-                    className="px-4 py-2 whitespace-nowrap overflow-hidden text-sm text-slate-800 dark:text-slate-200"
+                    className="px-4 py-2 whitespace-nowrap overflow-hidden text-sm text-slate-800 dark:text-slate-200 border-r border-slate-100 dark:border-slate-800 last:border-r-0"
                     title={typeof text === "string" ? text : undefined}
                   >
                     {typeof content === "string" ? (
@@ -297,6 +362,16 @@ const PreviewSectionTable = ({
               })}
             </tr>
           ))}
+          {files.length === 0 && (
+            <tr>
+              <td
+                colSpan={effectiveColumns.length + (selectionEnabled ? 1 : 0)}
+                className="px-6 py-12 text-center text-slate-500 dark:text-slate-400"
+              >
+                No files found
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

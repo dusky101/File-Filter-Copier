@@ -14,6 +14,7 @@ import {
   Download,
   Zap,
   Layout,
+  Camera, // Import Camera icon for Photo Mode section
 } from "lucide-react";
 import useSettingsStore from "../../stores/useSettingsStore";
 
@@ -26,6 +27,22 @@ const SettingsPanel = ({ isOpen, onClose }) => {
     showCreatedDate,
     showFileType,
     showFullPath,
+    // --- NEW: Photo Mode State ---
+    showCamera,
+    toggleCamera,
+    showLens,
+    toggleLens,
+    showISO,
+    toggleISO,
+    showAperture,
+    toggleAperture,
+    showShutter,
+    toggleShutter,
+    showDimensions,
+    toggleDimensions,
+    showLocation,
+    toggleLocation,
+    // -----------------------------
     animationsEnabled,
     compactMode,
     defaultExportFormat,
@@ -264,7 +281,7 @@ const SettingsPanel = ({ isOpen, onClose }) => {
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                 >
                   <option value="en-GB">English (UK)</option>
-                  <option value="en-US">English (US)</option>
+                  {/* <option value="en-US">English (US)</option> */}
                 </select>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   Changes spelling and terminology throughout the application
@@ -338,6 +355,101 @@ const SettingsPanel = ({ isOpen, onClose }) => {
                     className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                   />
                 </label>
+              </div>
+            </section>
+
+            {/* Photo Mode Options Section (NEW) */}
+            <section>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Camera className="w-5 h-5 text-blue-600" />
+                Photo Mode Columns
+              </h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Camera Model
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showCamera}
+                      onChange={toggleCamera}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Lens Model
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showLens}
+                      onChange={toggleLens}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      ISO
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showISO}
+                      onChange={toggleISO}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Aperture
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showAperture}
+                      onChange={toggleAperture}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Shutter Speed
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showShutter}
+                      onChange={toggleShutter}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Dimensions
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showDimensions}
+                      onChange={toggleDimensions}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+
+                  <label className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Location
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={showLocation}
+                      onChange={toggleLocation}
+                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                  </label>
+                </div>
               </div>
             </section>
 

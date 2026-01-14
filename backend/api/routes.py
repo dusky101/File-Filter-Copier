@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import fnmatch
+import asyncio
 
 # Import core functionality
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -18,12 +19,16 @@ from core.filters import filter_files, SIZE_FILTERS  # noqa: F401
 from core.file_ops import copy_files  
 from core.duplicate_checker import detect_duplicates  # noqa: F401
 from core.utils import format_size, format_timestamp  # noqa: F401
+# --- NEW IMPORT: Essential for Photo Mode ---
+from core.exif_utils import get_metadata
+# ------------------------------------------
 from features.extension_filter import filter_by_extension  # noqa: F401
 from features.hidden_filter import filter_hidden_files  # noqa: F401
 from features.preset_manager import (
     list_presets, save_preset, load_preset, delete_preset,
     get_default_preset, set_default_preset, clear_default_preset
 )
+
 # Robust import for the SSE progress manager (works in both run modes)
 try:
     from .progress import manager
@@ -207,8 +212,10 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 time_attribute=request.time_attribute,
                 deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
                 project_types=project_types,
+                # Pass photo_mode here to match signature, though results unused in prelim
+                photo_mode=request.photo_mode 
             )
-            # filter_files returns (path, semantic_type, tags)
+            # Unpack only the path (index 0) regardless of tuple size
             prelim_paths = [tpl[0] for tpl in prelim]
 
             # Extension filters
@@ -264,6 +271,7 @@ async def scan_files(request: ScanRequest, http_req: Request):
             elif event == "advance":
                 loop.create_task(manager.advance(progress_id, bytes_inc))
 
+        # --- CALL FILTER FILES WITH PHOTO MODE ---
         raw_files = filter_files(
              request.folder,
              request.size_filter,
@@ -283,9 +291,12 @@ async def scan_files(request: ScanRequest, http_req: Request):
              time_attribute=request.time_attribute,
              deep_scan_max_size_bytes=request.deep_scan_max_size_bytes,
              project_types=project_types,
+             # --- CRITICAL: Enable Photo Mode ---
+             photo_mode=request.photo_mode 
          )
 
         # Step 2: Apply extension filters
+        # raw_files is now a list of (path, semantic, tags, metadata)
         filtered_paths = filter_by_extension(
             [f[0] for f in raw_files],
             include_exts=request.include_exts,
@@ -309,9 +320,24 @@ async def scan_files(request: ScanRequest, http_req: Request):
         filtered_paths = _confine_to_root(filtered_paths, request.folder, skip_symlinks=not request.follow_symlinks)
 
         # Step 4: Map semantic types back to filtered paths
-        # Maps from filter (path -> (semantic_type, tags))
-        semantic_map = {p: s for (p, s, _tags) in raw_files}
-        tags_map = {p: list(_tags or []) for (p, _s, _tags) in raw_files}
+        # Maps from filter (path -> (semantic_type, tags, metadata))
+        semantic_map = {}
+        tags_map = {}
+        metadata_map = {}
+        
+        for item in raw_files:
+            # Handle variable unpacking (safety check for 3 vs 4 items)
+            if len(item) == 4:
+                p, s, t, m = item
+            elif len(item) == 3:
+                p, s, t = item
+                m = {}
+            else:
+                continue 
+                
+            semantic_map[p] = s
+            tags_map[p] = list(t or [])
+            metadata_map[p] = m
 
         # Add 'Extension' reason when include_exts was provided
         include_exts_norm = {(e or "").lower() for e in (request.include_exts or [])}
@@ -335,10 +361,21 @@ async def scan_files(request: ScanRequest, http_req: Request):
                 created = format_timestamp(os.path.getctime(path))
                 sem = semantic_map.get(path)
                 tags = tags_map.get(path, [])
+                
+                # Retrieve metadata extracted by filters.py
+                meta = metadata_map.get(path, {})
+
                 file_results.append(FileResult(
-                    path=path, name=name, size=size, size_formatted=size_fmt,
-                    modified=modified, created=created, semantic_type=sem or "Unclassified",
-                    search_tags=tags
+                    path=path, 
+                    name=name, 
+                    size=size, 
+                    size_formatted=size_fmt,
+                    modified=modified, 
+                    created=created, 
+                    semantic_type=sem or "Unclassified",
+                    search_tags=tags,
+                    # --- PASS METADATA TO RESPONSE ---
+                    metadata=meta
                 ))
             except Exception:
                 continue

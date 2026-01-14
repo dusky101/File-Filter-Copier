@@ -4,6 +4,9 @@ import logging
 from datetime import datetime
 from .utils import format_size, format_timestamp, safe_filename, ensure_unique_path
 from .file_types import get_file_category
+# --- NEW IMPORT: Essential for Date-Based Sorting ---
+from .exif_utils import get_metadata
+# ----------------------------------------------------
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,41 +44,54 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
                 
             filename = os.path.basename(src_path)
             
-            # --- Determine Subfolder Logic ---
+            # --- Determine Subfolder Based on Structure ---
             subfolder = ""
             
             if structure == "date":
-                # Organize by Year/Month based on Modified Time
+                # Try to get metadata first (for Photo Mode accuracy)
                 try:
-                    mtime = os.path.getmtime(src_path)
-                    dt = datetime.fromtimestamp(mtime)
-                    subfolder = os.path.join(str(dt.year), f"{dt.month:02d}")
-                except Exception:
-                    subfolder = "Unknown_Date"
+                    meta = get_metadata(src_path)
+                    date_str = meta.get("date_taken")
                     
+                    if date_str:
+                        # Parse various EXIF date formats
+                        # Standard EXIF: "YYYY:MM:DD HH:MM:SS" or "YYYY-MM-DD ..."
+                        # We replace colons/slashes to normalize to YYYY-MM-DD
+                        clean_date = date_str.replace(":", "-").replace("/", "-")[:10]
+                        dt = datetime.strptime(clean_date, "%Y-%m-%d")
+                    else:
+                        # Fallback to file modification time if no EXIF date
+                        ts = os.path.getmtime(src_path)
+                        dt = datetime.fromtimestamp(ts)
+                    
+                    year = dt.strftime("%Y")
+                    month = dt.strftime("%m")
+                    subfolder = os.path.join(year, month)
+                except Exception:
+                    # Ultimate fallback if everything fails
+                    subfolder = "Unknown_Date"
+
             elif structure == "type":
-                # Organize by Semantic Type (Images, Code, etc.)
-                cat = get_file_category(filename)
-                subfolder = cat if cat else "Other"
+                category = get_file_category(filename)
+                subfolder = category if category else "Other"
                 
             elif structure == "preserve" and source_folder:
-                # Recreate the relative path structure
+                # Calculate relative path
                 try:
-                    # relpath calculates path relative to source_folder
                     rel_path = os.path.relpath(os.path.dirname(src_path), source_folder)
-                    # Prevent '..' escaping or absolute path issues
-                    if not rel_path.startswith("..") and not os.path.isabs(rel_path):
+                    if rel_path == ".":
+                        subfolder = ""
+                    else:
                         subfolder = rel_path
                 except ValueError:
-                    pass # source_folder might not be a parent, fallback to flat
+                    # Path is not inside source_folder (e.g. symlink or external)
+                    subfolder = "External"
             
-            # --- Final Path Construction ---
+            # Construct final destination path
             target_dir = os.path.join(base_target_dir, subfolder)
             os.makedirs(target_dir, exist_ok=True)
             
-            # Safe filename and unique path handling
-            safe_name = safe_filename(filename)
-            dest_path = os.path.join(target_dir, safe_name)
+            dest_path = os.path.join(target_dir, safe_name(filename))
             dest_path = ensure_unique_path(dest_path)
             
             # Copy
@@ -85,7 +101,7 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
             size_fmt = format_size(os.path.getsize(src_path))
             time_fmt = format_timestamp(os.path.getmtime(src_path))
             
-            log_lines.append(f"{safe_name}  <-  {src_path}  [{size_fmt}, {time_fmt}]")
+            log_lines.append(f"{safe_name(filename)}  <-  {src_path}  [{size_fmt}, {time_fmt}]")
             copied_count += 1
             
         except Exception as e:
@@ -105,15 +121,18 @@ def copy_files(file_paths, destination, output_folder, structure="flat", source_
             f.write("-" * 40 + "\n")
             for line in log_lines:
                 f.write(line + "\n")
-    except Exception as e:
-        logger.error(f"Failed to write log file: {e}")
+    except Exception:
+        pass
 
     return {
         "success": True, 
         "data": {
-            "copied_count": copied_count, 
+            "copied_count": copied_count,
             "output_path": base_target_dir,
-            "log_file": log_file_path,
-            "errors": errors
+            "log_file": log_file_path
         }
     }
+
+# Helper wrapper for utils.safe_filename to avoid circular import issues if any
+def safe_name(name):
+    return safe_filename(name)

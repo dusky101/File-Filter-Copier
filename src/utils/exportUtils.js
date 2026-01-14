@@ -4,6 +4,7 @@ import { getFileLabelFromName } from "./fileTypes";
  * Export Utilities
  * Handles generating export files (Text, CSV, JSON, Markdown, HTML)
  * with updated merged columns and interactive HTML features.
+ * Now supports Photo Mode metadata including Dimensions and Location.
  */
 
 // --- Shared Helpers ---
@@ -97,6 +98,11 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
           output += `  ←  ${file.path}`;
           output += `  [${file.size_formatted}`;
           if (file.modified) output += `, Modified: ${file.modified}`;
+          // Photo Metadata
+          if (file.metadata?.model) output += `, Cam: ${file.metadata.model}`;
+          if (file.metadata?.iso) output += `, ISO: ${file.metadata.iso}`;
+          if (file.metadata?.dimensions)
+            output += `, Dim: ${file.metadata.dimensions}`;
           output += "]";
         }
         output += "\n";
@@ -115,6 +121,22 @@ export const exportAsText = (files, duplicates = {}, options = {}) => {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
         if (file.modified) bits.push(`Modified: ${file.modified}`);
+
+        // Photo Mode Bits
+        if (file.metadata) {
+          if (file.metadata.model) bits.push(`Camera: ${file.metadata.model}`);
+          if (file.metadata.lens) bits.push(`Lens: ${file.metadata.lens}`);
+          if (file.metadata.iso) bits.push(`ISO: ${file.metadata.iso}`);
+          if (file.metadata.aperture)
+            bits.push(`Aperture: ${file.metadata.aperture}`);
+          if (file.metadata.shutter_speed)
+            bits.push(`Shutter: ${file.metadata.shutter_speed}`);
+          if (file.metadata.dimensions)
+            bits.push(`Dims: ${file.metadata.dimensions}`);
+          if (file.metadata.location)
+            bits.push(`Loc: ${file.metadata.location}`);
+        }
+
         if (bits.length) output += `\n   Metadata: ${bits.join(" | ")}`;
       }
       output += "\n\n";
@@ -144,13 +166,16 @@ export const exportAsCSV = (files, options = {}) => {
   // Merged "SearchType" and "FileType" into "Classification"
   let csv = "Name,Path,Classification,Extension";
   if (includeMetadata) {
-    csv += ",Size,Size (Formatted),Modified,Created";
+    // Added Photo Mode Columns (Dimensions, Location)
+    csv +=
+      ",Camera,Lens,ISO,Aperture,Shutter,Dimensions,Location,Size,Size (Formatted),Modified,Created";
   }
   csv += "\n";
 
   files.forEach((file) => {
     const classification = getCombinedTypeLabel(file);
     const label = getFileLabelFromName(file.name || file.path);
+    const m = file.metadata || {};
 
     const row = [
       escapeCSV(file.name),
@@ -161,6 +186,13 @@ export const exportAsCSV = (files, options = {}) => {
 
     if (includeMetadata) {
       row.push(
+        escapeCSV(m.model || ""),
+        escapeCSV(m.lens || ""),
+        escapeCSV(m.iso || ""),
+        escapeCSV(m.aperture || ""),
+        escapeCSV(m.shutter_speed || ""),
+        escapeCSV(m.dimensions || ""),
+        escapeCSV(m.location || ""),
         file.size || 0,
         escapeCSV(file.size_formatted || ""),
         escapeCSV(file.modified || ""),
@@ -185,7 +217,7 @@ export const exportAsJSON = (files, duplicates = {}, options = {}) => {
       : files.map((f) => ({
           name: f.name,
           path: f.path,
-          classification: getCombinedTypeLabel(f), // Added simplified field
+          classification: getCombinedTypeLabel(f),
           label: getFileLabelFromName(f.name || f.path),
         })),
     duplicates: Object.keys(duplicates).length > 0 ? duplicates : undefined,
@@ -216,7 +248,9 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
         md += `- **${file.name}**\n  - Path: \`${file.path}\`\n`;
         if (includeMetadata) {
           if (file.size_formatted) md += `  - Size: ${file.size_formatted}\n`;
-          if (file.modified) md += `  - Modified: ${file.modified}\n`;
+          const m = file.metadata || {};
+          if (m.model) md += `  - Camera: ${m.model}\n`;
+          if (m.location) md += `  - Location: ${m.location}\n`;
         }
       });
       md += "\n";
@@ -235,6 +269,14 @@ export const exportAsMarkdown = (files, duplicates = {}, options = {}) => {
         const bits = [];
         if (file.size_formatted) bits.push(`Size: ${file.size_formatted}`);
         if (file.modified) bits.push(`Modified: ${file.modified}`);
+
+        // Photo Bits
+        const m = file.metadata || {};
+        if (m.model) bits.push(`📷 ${m.model}`);
+        if (m.iso) bits.push(`ISO ${m.iso}`);
+        if (m.dimensions) bits.push(`📐 ${m.dimensions}`);
+        if (m.location) bits.push(`📍 ${m.location}`);
+
         if (bits.length) md += `  - ${bits.join(" | ")}\n`;
       }
     });
@@ -280,6 +322,7 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
     const typeBadge = `<span class="badge type-badge">${escapeHTML(semantic)}</span>`;
 
     const label = getFileLabelFromName(file.name || file.path);
+    const m = file.metadata || {};
 
     rows += `
       <tr data-type="${escapeHTML(semantic)}">
@@ -297,6 +340,13 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
         ${
           includeMetadata
             ? `
+          <td>${escapeHTML(m.model || "-")}</td>
+          <td>${escapeHTML(m.lens || "-")}</td>
+          <td>${escapeHTML(m.iso || "-")}</td>
+          <td>${escapeHTML(m.aperture || "-")}</td>
+          <td>${escapeHTML(m.shutter_speed || "-")}</td>
+          <td>${escapeHTML(m.dimensions || "-")}</td>
+          <td>${escapeHTML(m.location || "-")}</td>
           <td data-val="${file.size || 0}">${escapeHTML(file.size_formatted || "")}</td>
           <td>${escapeHTML(file.modified || "")}</td>
         `
@@ -347,7 +397,7 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
     --badge-text: #475569;
   }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text-main); margin: 0; padding: 40px 20px; line-height: 1.5; }
-  .container { max-width: 1400px; margin: 0 auto; }
+  .container { max-width: 1600px; margin: 0 auto; }
   
   /* Header */
   .header { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: white; padding: 40px; border-radius: 16px; margin-bottom: 32px; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3); }
@@ -362,16 +412,27 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
   .filter-select { padding: 10px 32px 10px 16px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; background: white url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e") no-repeat right 0.5rem center/1.5em 1.5em; appearance: none; cursor: pointer; }
   .filter-select:focus { border-color: var(--primary); }
 
-  /* Table */
-  .table-container { background: white; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); overflow: hidden; border: 1px solid var(--border); }
-  table { width: 100%; border-collapse: collapse; text-align: left; }
-  th { background: #f8fafc; padding: 16px; font-size: 13px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+  /* Table - UPDATED FOR SCROLLING */
+  .table-container { 
+    background: white; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); 
+    overflow-x: auto; /* Enable horizontal scroll */
+    border: 1px solid var(--border); 
+  }
+  table { 
+    width: max-content; /* Allow table to expand */
+    min-width: 100%; 
+    border-collapse: collapse; 
+    text-align: left; 
+  }
+  th { background: #f8fafc; padding: 16px; font-size: 13px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; white-space: nowrap; }
   th:hover { background: #f1f5f9; color: var(--text-main); }
   td { padding: 16px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 14px; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #fcfcfc; }
   
-  .primary-col { max-width: 400px; }
+  .primary-col { max-width: 400px; min-width: 250px; }
   .filename { font-weight: 600; color: var(--text-main); margin-bottom: 4px; word-break: break-all; }
   .filepath { font-size: 12px; color: var(--text-sub); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
   
@@ -395,7 +456,8 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
   @media print {
     body { background: white; padding: 0; }
     .header, .controls { box-shadow: none; border: 1px solid black; }
-    .table-container { box-shadow: none; border: 1px solid black; }
+    .table-container { box-shadow: none; border: 1px solid black; overflow: visible; }
+    table { width: 100%; }
   }
 </style>
 </head>
@@ -427,7 +489,21 @@ export const exportAsHTML = (files, duplicates = {}, options = {}) => {
           <th onclick="sortTable(0)">Name / Path ↕</th>
           <th onclick="sortTable(1)">Classification ↕</th>
           <th onclick="sortTable(2)">Ext ↕</th>
-          ${includeMetadata ? `<th onclick="sortTable(3, 'num')">Size ↕</th><th onclick="sortTable(4)">Modified ↕</th>` : ""}
+          ${
+            includeMetadata
+              ? `
+          <th onclick="sortTable(3)">Camera ↕</th>
+          <th onclick="sortTable(4)">Lens ↕</th>
+          <th onclick="sortTable(5)">ISO ↕</th>
+          <th onclick="sortTable(6)">Aperture ↕</th>
+          <th onclick="sortTable(7)">Shutter ↕</th>
+          <th onclick="sortTable(8)">Dimensions ↕</th>
+          <th onclick="sortTable(9)">Location ↕</th>
+          <th onclick="sortTable(10, 'num')">Size ↕</th>
+          <th onclick="sortTable(11)">Modified ↕</th>
+          `
+              : ""
+          }
         </tr>
       </thead>
       <tbody>

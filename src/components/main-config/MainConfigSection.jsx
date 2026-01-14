@@ -149,7 +149,7 @@ const MainConfigSection = ({ onOpenPresetManager }) => {
             <button
               onClick={() => handleBrowseFolder("source")}
               className={`
-              px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white 
+              px-6 py-3 bg-linear-to-r from-blue-600 to-purple-600 text-white 
               rounded-xl shadow-md hover:shadow-lg font-medium
               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
               flex items-center gap-2
@@ -181,7 +181,7 @@ const MainConfigSection = ({ onOpenPresetManager }) => {
             <button
               onClick={() => handleBrowseFolder("destination")}
               className={`
-              px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white 
+              px-6 py-3 bg-linear-to-r from-blue-600 to-purple-600 text-white 
               rounded-xl shadow-md hover:shadow-lg font-medium
               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
               flex items-center gap-2

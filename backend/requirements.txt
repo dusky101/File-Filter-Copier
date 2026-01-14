@@ -7,6 +7,12 @@ pydantic-settings==2.5.2
 python-multipart==0.0.12
 orjson==3.10.7
 
-# Performance extras (skip on Windows to avoid build issues)
+# Image Processing & Metadata
+Pillow==10.4.0
+pillow-heif==0.18.0
+tinytag==1.10.1
+reverse_geocoder==1.5.1
+
+# Performance extras
 uvloop==0.21.0; sys_platform != "win32"
 httptools==0.7.1; sys_platform != "win32"

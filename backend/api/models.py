@@ -13,6 +13,7 @@ class ScanRequest(BaseModel):
     
     # --- ADDED FIELD HERE ---
     dry_run: bool = Field(default=True, description="Dry run enabled (preview only)")
+    photo_mode: bool = Field(default=False, description="Enable Photo Mode for EXIF/Metadata extraction")
     # ------------------------
 
     size_filter: str = Field(default=">1KB", description="Size filter (>1KB, <1KB, >500MB, all)")
@@ -41,7 +42,8 @@ class ScanRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "folder": "/Users/marc/Documents",
-                "dry_run": True, # Updated example
+                "dry_run": True,
+                "photo_mode": False,
                 "size_filter": ">1KB",
                 "time_filter": "<7d",
                 "selected_types": ["Python", "JavaScript"],
@@ -65,6 +67,8 @@ class FileResult(BaseModel):
     created: str = Field(..., description="Creation timestamp")
     semantic_type: Optional[str] = Field(None, description="Semantic file type classification")
     search_tags: List[str] = Field(default_factory=list, description="Reasons this file matched (Regex, Glob, Size, Time, Deep Scan, Semantic, Extension)")
+    # --- ADDED FIELD ---
+    metadata: Dict[str, Any] = Field(default={}, description="Photo/Video metadata (EXIF, Dimensions, etc.)")
 
 
 class ScanResponse(BaseModel):

@@ -1,16 +1,20 @@
 /**
  * Header Component
- * Displays the application logo, title, and settings button
+ * Displays the application logo, title, settings button, and the Photo Mode toggle.
  */
 
 import React from "react";
-import { Filter, FolderSearch, Settings, Info } from "lucide-react";
+import { Filter, FolderSearch, Settings, Info, Camera } from "lucide-react";
 import useSettingsStore from "../../stores/useSettingsStore";
+import useFilterStore from "../../stores/useFilterStore";
 
 const Header = ({ onSettingsClick, onHelpClick }) => {
   const animationsEnabled = useSettingsStore(
     (state) => state.animationsEnabled
   );
+
+  // Connect to the Filter Store for the smart toggle logic
+  const { photoMode, togglePhotoMode } = useFilterStore();
 
   return (
     <header className="flex items-center justify-between mb-8">
@@ -35,8 +39,35 @@ const Header = ({ onSettingsClick, onHelpClick }) => {
         </div>
       </div>
 
-      {/* Actions: Help + Settings */}
+      {/* Actions: Photo Mode + Help + Settings */}
       <div className="flex items-center gap-3">
+        {/* Photo Mode Toggle */}
+        <button
+          onClick={togglePhotoMode}
+          className={`
+            flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg 
+            hover:shadow-xl border 
+            focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2
+            ${animationsEnabled ? "transition-all hover:scale-105" : ""}
+            ${
+              photoMode
+                ? "bg-purple-600 text-white border-purple-600 hover:bg-purple-700"
+                : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+            }
+          `}
+          aria-label="Toggle Photo Mode"
+          title={
+            photoMode
+              ? "Photo Mode Active: Filters restricted to photos"
+              : "Enable Photo Mode (Auto-selects Photo filters)"
+          }
+        >
+          <Camera className={`w-5 h-5 ${photoMode ? "text-white" : ""}`} />
+          <span className="font-medium text-sm hidden sm:inline">
+            Photo Mode
+          </span>
+        </button>
+
         <button
           onClick={onHelpClick}
           className={`
@@ -46,9 +77,11 @@ const Header = ({ onSettingsClick, onHelpClick }) => {
             ${animationsEnabled ? "transition-all hover:scale-105" : ""}
           `}
           aria-label="Open Instructions"
+          title="Instructions"
         >
           <Info className="w-5 h-5 text-slate-700 dark:text-slate-300" />
         </button>
+
         <button
           onClick={onSettingsClick}
           className={`
@@ -58,6 +91,7 @@ const Header = ({ onSettingsClick, onHelpClick }) => {
             ${animationsEnabled ? "transition-all hover:scale-105" : ""}
           `}
           aria-label="Open Settings"
+          title="Settings"
         >
           <Settings className="w-5 h-5 text-slate-700 dark:text-slate-300" />
         </button>

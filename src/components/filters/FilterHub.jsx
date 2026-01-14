@@ -13,6 +13,8 @@ import {
   Tag,
   ScanSearch,
   ListFilter,
+  Camera, // --- NEW: For Photo Mode Badge
+  Info, // --- NEW: For Help Link
 } from "lucide-react";
 import useFilterStore from "../../stores/useFilterStore";
 import usePreviewStore from "../../stores/usePreviewStore";
@@ -25,7 +27,7 @@ import AdvancedFilterHub from "./AdvancedFilterHub";
  * A sleek, sectioned drawer that centralizes all filtering options.
  * Sections are navigation-driven; changes apply immediately. The footer provides Close/Reset.
  */
-const FilterHub = ({ open, onClose, initialSection }) => {
+const FilterHub = ({ open, onClose, initialSection, onOpenHelp }) => {
   const {
     // ext
     includeExtensions,
@@ -59,13 +61,25 @@ const FilterHub = ({ open, onClose, initialSection }) => {
     deepScanMode,
     setDeepScanMode,
     deepScanTerms,
-    addDeepScanTerm,
-    removeDeepScanTerm,
-    updateDeepScanTerm,
+    setDeepScanTerms,
     // utils
     resetFilters,
     sourceFolder,
+    // --- NEW: Photo Mode State
+    photoMode,
   } = useFilterStore();
+
+  // --- HELPER: Compatibility wrappers for Deep Scan ---
+  const addDeepScanTerm = () =>
+    setDeepScanTerms([...(deepScanTerms || []), ""]);
+  const removeDeepScanTerm = (i) =>
+    setDeepScanTerms((deepScanTerms || []).filter((_, idx) => idx !== i));
+  const updateDeepScanTerm = (i, val) => {
+    const newTerms = [...(deepScanTerms || [])];
+    newTerms[i] = val;
+    setDeepScanTerms(newTerms);
+  };
+  // ----------------------------------------------------
 
   const { excludeDuplicates, setExcludeDuplicates } = usePreviewStore();
 
@@ -76,12 +90,12 @@ const FilterHub = ({ open, onClose, initialSection }) => {
       setSection(initialSection);
     }
   }, [open, initialSection]);
+
   const [quickActiveKey, setQuickActiveKey] = useState(null);
   const [quickSnapshot, setQuickSnapshot] = useState(null);
 
   // Apply a quick preset while snapshotting previous state
   const applyQuickPreset = (key) => {
-    // snapshot only fields that quick presets modify
     const snap = {
       size: sizeFilter,
       time: timeFilter,
@@ -113,7 +127,6 @@ const FilterHub = ({ open, onClose, initialSection }) => {
     setQuickActiveKey(key);
   };
 
-  // Revert to snapshot when clearing a quick preset
   const clearQuickPreset = () => {
     if (!quickSnapshot) return;
     setSizeFilter(quickSnapshot.size);
@@ -199,8 +212,16 @@ const FilterHub = ({ open, onClose, initialSection }) => {
           <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center gap-2">
               <Filter className="w-5 h-5 text-blue-600" />
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center gap-3">
                 Filters
+                {/* --- NEW: Photo Mode Badge --- */}
+                {photoMode && (
+                  <span className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                    <Camera className="w-3 h-3" />
+                    Photo Mode
+                  </span>
+                )}
+                {/* ----------------------------- */}
               </h2>
             </div>
             <button
@@ -228,6 +249,8 @@ const FilterHub = ({ open, onClose, initialSection }) => {
                 selected={selectedFileTypes}
                 onToggle={toggleFileType}
                 onClear={clearFileTypes}
+                photoMode={photoMode}
+                onOpenHelp={onOpenHelp} // --- PASS PROP ---
               />
             )}
             {section === "exts" && (
@@ -291,10 +314,8 @@ const FilterHub = ({ open, onClose, initialSection }) => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
-                  // Clear all filters across sections
                   resetFilters();
                   setExcludeDuplicates(false);
-                  // Revert and clear any active quick preset
                   setQuickActiveKey(null);
                   setQuickSnapshot(null);
                 }}
@@ -304,7 +325,7 @@ const FilterHub = ({ open, onClose, initialSection }) => {
               </button>
               <button
                 onClick={onClose}
-                className="px-4 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow hover:shadow-md"
+                className="px-4 py-2 rounded-lg bg-linear-to-r from-blue-600 to-purple-600 text-white shadow hover:shadow-md"
               >
                 Close
               </button>
@@ -328,8 +349,6 @@ const HubNavItem = ({ icon: Icon, label, active, onClick }) => (
 
 // Sections
 const QuickFilters = ({ activeKey, onApply, onClear }) => {
-  // No direct store writes here; parent handles apply/clear to support snapshot
-
   const presets = [
     {
       key: "recent7",
@@ -363,7 +382,6 @@ const QuickFilters = ({ activeKey, onApply, onClear }) => {
     const [pulse, setPulse] = useState(false);
     const handleClick = (e) => {
       onClick?.(e);
-      // one-shot selected pulse
       setPulse(false);
       requestAnimationFrame(() => setPulse(true));
       setTimeout(() => setPulse(false), 700);
@@ -373,13 +391,12 @@ const QuickFilters = ({ activeKey, onApply, onClear }) => {
         onClick={handleClick}
         className={
           (active
-            ? "p-4 rounded-xl text-white bg-gradient-to-r from-indigo-600 to-violet-600 shadow-lg hover:shadow-xl ring-1 ring-white/20"
+            ? "p-4 rounded-xl text-white bg-linear-to-r from-indigo-600 to-violet-600 shadow-lg hover:shadow-xl ring-1 ring-white/20"
             : "p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-white dark:hover:bg-slate-800 hover:shadow") +
           " relative overflow-hidden transition-all duration-300 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 btn-shine"
         }
       >
         <span className="text-sm font-medium relative z-10">{label}</span>
-        {/* selected pulse aura (one-shot) */}
         {active && (
           <span
             className={`pointer-events-none absolute inset-0 rounded-xl ${pulse ? "animate-selected-pulse" : ""}`}
@@ -406,7 +423,6 @@ const QuickFilters = ({ activeKey, onApply, onClear }) => {
         ))}
       </div>
 
-      {/* Applied preset details */}
       {activeKey && (
         <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50 p-4">
           <div className="text-sm font-medium mb-1">Applied filters</div>
@@ -425,16 +441,46 @@ const QuickFilters = ({ activeKey, onApply, onClear }) => {
         Presets change underlying filters; you can still tweak details in other
         sections.
       </div>
-
-      {/* Keyframes moved to index.css */}
     </div>
   );
 };
 
-const FileTypesSection = ({ selected, onToggle, onClear }) => {
+// --- UPDATED: File Types Section with Photo Mode Hint & Info Link ---
+const FileTypesSection = ({
+  selected,
+  onToggle,
+  onClear,
+  photoMode,
+  onOpenHelp,
+}) => {
   return (
     <div>
       <SectionTitle title="File Types" subtitle="Pick categories to include" />
+
+      {/* --- NEW: Photo Mode Hint --- */}
+      {photoMode && (
+        <div className="mt-2 mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg flex items-start gap-3">
+          <Camera className="w-5 h-5 text-purple-600 dark:text-purple-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-purple-900 dark:text-purple-100 leading-relaxed">
+            <strong>Photo Mode Active:</strong> It has automatically selected{" "}
+            <strong>Photos</strong>. If <strong>you want Videos too</strong>,{" "}
+            select the <strong>Video option</strong> also. You can also
+            customise file types in the <strong>Extensions</strong> section
+            below using the options on the left. <strong>Photo Mode</strong>{" "}
+            will show <strong>EXIF Data</strong> in the preview section.
+            {/* Info Link */}
+            <button
+              onClick={() => onOpenHelp && onOpenHelp("photo")}
+              className="inline-flex items-center gap-1 ml-2 text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 font-medium transition-colors align-bottom"
+              title="Learn more about Photo Mode"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+      {/* ---------------------------- */}
+
       <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         {Object.entries(fileTypeGroups).map(([group, items]) => (
           <div

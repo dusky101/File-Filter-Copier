@@ -15,6 +15,7 @@ import {
   XCircle,
   FolderCheck,
   FolderTree, // Imported for the new section icon
+  Camera, // Imported for Photo Mode indicator
 } from "lucide-react";
 import Header from "./components/layout/Header";
 import SettingsPanel from "./components/layout/SettingsPanel";
@@ -46,7 +47,12 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showFilterHub, setShowFilterHub] = useState(false);
   const [filterHubSection, setFilterHubSection] = useState("quick");
+
+  // --- Instructions State ---
   const [showInstructions, setShowInstructions] = useState(false);
+  const [instructionsSection, setInstructionsSection] = useState("start"); // NEW: Track help section
+  // --------------------------
+
   const [showPresetManager, setShowPresetManager] = useState(false);
 
   // --- Dialog States ---
@@ -63,6 +69,7 @@ function App() {
   useEffect(() => {
     if (window.electron && window.electron.onOpenHelp) {
       const removeListener = window.electron.onOpenHelp(() => {
+        setInstructionsSection("start"); // Default to start
         setShowInstructions(true);
       });
       return () => removeListener();
@@ -89,6 +96,8 @@ function App() {
     // Destructure copy settings here
     copyStructure,
     setCopyStructure,
+    // NEW: Access Photo Mode state
+    photoMode,
   } = useFilterStore();
 
   const {
@@ -290,6 +299,7 @@ function App() {
         files: filePaths,
         destination: destinationFolder,
         outputFolder: outputFolderName,
+        // Ensure structure and source_folder are passed
         structure: config.structure || "flat",
         source_folder: sourceFolder,
       };
@@ -369,7 +379,10 @@ function App() {
         {/* Header */}
         <Header
           onSettingsClick={() => setShowSettings(true)}
-          onHelpClick={() => setShowInstructions(true)}
+          onHelpClick={() => {
+            setInstructionsSection("start"); // Default help
+            setShowInstructions(true);
+          }}
         />
 
         {/* Settings Panel */}
@@ -385,21 +398,41 @@ function App() {
 
         {/* --- GLOBAL COPY ORGANISATION --- */}
         {/* Placed here so it controls both main Copy and "Copy Selected" */}
-        <div className="mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div
+          className={`mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${photoMode ? "ring-2 ring-purple-500/50" : ""}`}
+        >
           <div>
             <div className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-              <FolderTree className="w-4 h-4 text-blue-500" />
+              <FolderTree
+                className={`w-4 h-4 ${photoMode ? "text-purple-500" : "text-blue-500"}`}
+              />
               Folder Structure
+              {photoMode && (
+                <span className="ml-2 px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1">
+                  <Camera className="w-3 h-3" />
+                  Locked by Photo Mode
+                </span>
+              )}
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              Define how subfolders are created in the output location.
+              {photoMode
+                ? "Structure is automatically set to Date (Year/Month) for photos."
+                : "Define how subfolders are created in the output location."}
             </div>
           </div>
           <div className="flex items-center gap-2">
             <select
               value={copyStructure}
               onChange={(e) => setCopyStructure(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              disabled={photoMode}
+              className={`
+                px-4 py-2 rounded-lg border text-sm outline-none transition-colors
+                ${
+                  photoMode
+                    ? "bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 cursor-not-allowed"
+                    : "bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-blue-500"
+                }
+              `}
             >
               <option value="flat">Flat: No subfolders (All in one)</option>
               <option value="date">
@@ -536,10 +569,17 @@ function App() {
         open={showFilterHub}
         onClose={() => setShowFilterHub(false)}
         initialSection={filterHubSection}
+        // --- NEW: Handle opening Help from within Filters ---
+        onOpenHelp={(section) => {
+          setInstructionsSection(section);
+          setShowInstructions(true);
+        }}
+        // ----------------------------------------------------
       />
       <InstructionsHub
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
+        initialSection={instructionsSection} // --- NEW: Pass the active section ---
         onOpenAdvanced={() => {
           setShowInstructions(false);
           setFilterHubSection("adv");
