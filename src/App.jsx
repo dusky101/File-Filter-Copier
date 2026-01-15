@@ -14,8 +14,8 @@ import {
   AlertTriangle,
   XCircle,
   FolderCheck,
-  FolderTree, // Imported for the new section icon
-  Camera, // Imported for Photo Mode indicator
+  FolderTree,
+  Camera,
 } from "lucide-react";
 import Header from "./components/layout/Header";
 import SettingsPanel from "./components/layout/SettingsPanel";
@@ -43,14 +43,18 @@ import InlineDeepScanProgress from "./components/progress/InlineDeepScanProgress
 import { Dialog, DialogHeader, DialogFooter } from "./ui/dialog";
 
 function App() {
+  // --- SETTINGS STATE ---
   const [showSettings, setShowSettings] = useState(false);
+  // Track which tab to open in settings (default to "general")
+  const [settingsTab, setSettingsTab] = useState("general");
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [showFilterHub, setShowFilterHub] = useState(false);
   const [filterHubSection, setFilterHubSection] = useState("quick");
 
   // --- Instructions State ---
   const [showInstructions, setShowInstructions] = useState(false);
-  const [instructionsSection, setInstructionsSection] = useState("start"); // NEW: Track help section
+  const [instructionsSection, setInstructionsSection] = useState("start");
   // --------------------------
 
   const [showPresetManager, setShowPresetManager] = useState(false);
@@ -69,7 +73,7 @@ function App() {
   useEffect(() => {
     if (window.electron && window.electron.onOpenHelp) {
       const removeListener = window.electron.onOpenHelp(() => {
-        setInstructionsSection("start"); // Default to start
+        setInstructionsSection("start");
         setShowInstructions(true);
       });
       return () => removeListener();
@@ -114,8 +118,37 @@ function App() {
     defaultPresetName,
     getNextOutputNameForPreset,
     getRequestTimeout,
+    // --- NEW: Access Custom Colors for Theme Engine ---
+    customColors,
   } = useSettingsStore();
+
   const { loadPresetConfig } = useFilterStore();
+
+  // --- THEME ENGINE ---
+  // Applies the custom colors from the store to the CSS variables instantly
+  useEffect(() => {
+    const root = document.documentElement;
+    const colors = customColors || {};
+
+    // Apply Light Theme Variables
+    if (colors.light) {
+      root.style.setProperty("--color-light-bg", colors.light.bg);
+      root.style.setProperty("--color-light-fg", colors.light.fg);
+      root.style.setProperty("--color-light-highlight", colors.light.highlight);
+      root.style.setProperty("--color-light-button-bg", colors.light.buttonBg);
+      root.style.setProperty("--color-light-entry-bg", colors.light.entryBg);
+    }
+
+    // Apply Dark Theme Variables
+    if (colors.dark) {
+      root.style.setProperty("--color-dark-bg", colors.dark.bg);
+      root.style.setProperty("--color-dark-fg", colors.dark.fg);
+      root.style.setProperty("--color-dark-highlight", colors.dark.highlight);
+      root.style.setProperty("--color-dark-button-bg", colors.dark.buttonBg);
+      root.style.setProperty("--color-dark-entry-bg", colors.dark.entryBg);
+    }
+  }, [customColors]);
+  // --------------------
 
   // Derive active filters count for quick glance
   const activeFiltersCount = (() => {
@@ -368,27 +401,36 @@ function App() {
 
   // Fixed: Correctly update state when event is fired
   useEffect(() => {
-    const open = () => setShowSettings(true);
+    const open = () => {
+      setSettingsTab("general");
+      setShowSettings(true);
+    };
     window.addEventListener("open-settings", open);
     return () => window.removeEventListener("open-settings", open);
   }, []);
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6">
+    // REMOVED: "bg-linear-to-br from-slate-50 to-slate-100" (Now transparent for light mode)
+    // ADDED: transition-colors duration-500 for smooth theme switching
+    <div className="min-h-screen dark:bg-linear-to-br dark:from-slate-900 dark:to-slate-800 p-6 transition-colors duration-500">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <Header
-          onSettingsClick={() => setShowSettings(true)}
+          onSettingsClick={() => {
+            setSettingsTab("general");
+            setShowSettings(true);
+          }}
           onHelpClick={() => {
-            setInstructionsSection("start"); // Default help
+            setInstructionsSection("start");
             setShowInstructions(true);
           }}
         />
 
-        {/* Settings Panel */}
+        {/* Settings Panel - PASSED NEW initialTab PROP */}
         <SettingsPanel
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+          initialTab={settingsTab}
         />
 
         {/* Main Configuration Section (Source/Dest/Output) */}
@@ -397,7 +439,6 @@ function App() {
         />
 
         {/* --- GLOBAL COPY ORGANISATION --- */}
-        {/* Placed here so it controls both main Copy and "Copy Selected" */}
         <div
           className={`mb-4 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all ${photoMode ? "ring-2 ring-purple-500/50" : ""}`}
         >
@@ -549,8 +590,14 @@ function App() {
           />
         </div>
 
-        {/* Preview Section */}
-        <PreviewSection onOpenSettings={() => setShowSettings(true)} />
+        {/* Preview Section - UPDATED TO PASS SMART SETTINGS HANDLER */}
+        <PreviewSection
+          onOpenSettings={() => {
+            // Smart Logic: If photo mode, go to Photo settings. Else, standard columns.
+            setSettingsTab(photoMode ? "photo" : "columns");
+            setShowSettings(true);
+          }}
+        />
 
         {/* Preset Name Dialog */}
         <PresetNameDialog
@@ -564,29 +611,25 @@ function App() {
       </div>
 
       {/* --- Global Modals --- */}
-
       <FilterHub
         open={showFilterHub}
         onClose={() => setShowFilterHub(false)}
         initialSection={filterHubSection}
-        // --- NEW: Handle opening Help from within Filters ---
         onOpenHelp={(section) => {
           setInstructionsSection(section);
           setShowInstructions(true);
         }}
-        // ----------------------------------------------------
       />
       <InstructionsHub
         open={showInstructions}
         onClose={() => setShowInstructions(false)}
-        initialSection={instructionsSection} // --- NEW: Pass the active section ---
+        initialSection={instructionsSection}
         onOpenAdvanced={() => {
           setShowInstructions(false);
           setFilterHubSection("adv");
           setShowFilterHub(true);
         }}
       />
-
       <PresetManagerPanel
         isOpen={showPresetManager}
         onClose={() => setShowPresetManager(false)}

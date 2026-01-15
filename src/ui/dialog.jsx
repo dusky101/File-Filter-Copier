@@ -37,7 +37,7 @@ export function Dialog({ open, onClose, children, className }) {
     >
       <div
         className={cn(
-          "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 rounded-2xl shadow-2xl w-full max-w-md relative border border-slate-200 dark:border-slate-800 dialog-content top-1/2 left-1/2 fixed -translate-x-1/2 -translate-y-1/2",
+          "bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 p-6 rounded-2xl shadow-2xl w-full max-w-md border border-slate-200 dark:border-slate-800 dialog-content top-1/2 left-1/2 fixed -translate-x-1/2 -translate-y-1/2",
           className
         )}
         onClick={(e) => e.stopPropagation()}

@@ -47,7 +47,6 @@ const useSettingsStore = create(
       includeMetadataInExport: true,
 
       // Network/operations timeouts
-      // Timeout in milliseconds for long-running requests (scan/copy). Set to 0 to disable.
       requestTimeoutMs: 300000, // default 5 minutes
       disableRequestTimeout: false,
 
@@ -65,6 +64,29 @@ const useSettingsStore = create(
       recentSourceFolders: [],
       recentDestinationFolders: [],
       maxRecentFolders: 10,
+
+      // --- NEW: Custom Theme Engine ---
+      // We store overrides. If a value is missing, the CSS default applies.
+      customColors: {
+        light: {
+          bg: "#6586c9", // Your blue background
+          fg: "#1f2937",
+          highlight: "#2563eb", // Blue accent
+          buttonBg: "#e5e7eb",
+          entryBg: "#ffffff",
+        },
+        dark: {
+          bg: "#202124", // Dark gray
+          fg: "#d4d4d4",
+          highlight: "#3b82f6", // Lighter blue accent
+          buttonBg: "#2a2d2e",
+          entryBg: "#2f3132",
+        },
+      },
+
+      // =========================================
+      // ACTIONS
+      // =========================================
 
       // Actions: Theme
       setTheme: (theme) => {
@@ -179,7 +201,7 @@ const useSettingsStore = create(
           recentDestinationFolders: [],
         }),
 
-      // Presets actions
+      // Actions: Presets
       setDefaultPresetName: (name) => set({ defaultPresetName: name || null }),
       setActivePresetName: (name) => set({ activePresetName: name || null }),
       refreshDefaultPresetName: async () => {
@@ -192,11 +214,9 @@ const useSettingsStore = create(
       },
       clearDefaultPresetName: () => set({ defaultPresetName: "" }),
       getNextOutputNameForPreset: (presetName, baseName) => {
-        // returns nextName and updates counter
         const state = get();
         const counters = { ...(state.presetOutputCounters || {}) };
         const current = counters[presetName] || 0;
-        // Split trailing number from base
         const m = String(baseName || "").match(/^(.*?)(\d+)$/);
         const root = m ? m[1] : String(baseName || "Output");
         const startFrom = m ? parseInt(m[2], 10) : 0;
@@ -218,7 +238,7 @@ const useSettingsStore = create(
           showCreatedDate: false,
           showFileType: true,
           showFullPath: false,
-          // --- NEW: Reset Photo Mode Defaults ---
+          // --- Reset Photo Mode Defaults ---
           showCamera: true,
           showLens: true,
           showISO: true,
@@ -226,7 +246,7 @@ const useSettingsStore = create(
           showShutter: true,
           showDimensions: true,
           showLocation: true,
-          // --------------------------------------
+          // --------------------------------
           animationsEnabled: true,
           compactMode: false,
           defaultItemsPerPage: 50,
@@ -236,7 +256,45 @@ const useSettingsStore = create(
           includeMetadataInExport: true,
           requestTimeoutMs: 300000,
           disableRequestTimeout: false,
+          // Reset colors to your 'factory defaults'
+          customColors: {
+            light: {
+              bg: "#6586c9",
+              fg: "#1f2937",
+              highlight: "#2563eb",
+              buttonBg: "#e5e7eb",
+              entryBg: "#ffffff",
+            },
+            dark: {
+              bg: "#202124",
+              fg: "#d4d4d4",
+              highlight: "#3b82f6",
+              buttonBg: "#2a2d2e",
+              entryBg: "#2f3132",
+            },
+          },
         }),
+
+      // --- NEW: THEME ACTIONS (This was the missing bit) ---
+      setCustomColor: (mode, key, value) =>
+        set((state) => ({
+          customColors: {
+            ...state.customColors,
+            [mode]: {
+              ...state.customColors[mode],
+              [key]: value,
+            },
+          },
+        })),
+
+      applyThemePreset: (mode, preset) =>
+        set((state) => ({
+          customColors: {
+            ...state.customColors,
+            [mode]: { ...state.customColors[mode], ...preset },
+          },
+        })),
+      // -----------------------------------------------------
 
       // Utility: Get display columns configuration
       getDisplayColumns: () => {
@@ -267,7 +325,7 @@ const useSettingsStore = create(
       formatText: (key) => {
         const { language } = get();
 
-        // Simple text dictionary (can be expanded or moved to separate file)
+        // Simple text dictionary
         const texts = {
           "en-GB": {
             folder: "Folder",

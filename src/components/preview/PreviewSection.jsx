@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Loader2,
   FolderCheck,
+  Tag,
+  Settings,
 } from "lucide-react";
 import usePreviewStore from "../../stores/usePreviewStore";
 import useFilterStore from "../../stores/useFilterStore";
@@ -574,16 +576,20 @@ const PreviewSection = ({ onOpenSettings }) => {
               <option value="md">Markdown</option>
             </select>
 
+            {/* TAG BUTTON WITH CUSTOM TOOLTIP */}
             <button
               onClick={toggleMetadataInExport}
-              title={`Metadata is ${includeMetadataInExport ? "ON" : "OFF"}`}
-              className={`p-2 rounded-lg border transition-all ${
+              className={`group relative p-2 rounded-lg border transition-all ${
                 includeMetadataInExport
                   ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400"
                   : "bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-400"
               }`}
             >
-              <Settings2 className="w-4 h-4" />
+              <Tag className="w-4 h-4" />
+              {/* Custom Tooltip */}
+              <span className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+                Metadata: {includeMetadataInExport ? "ON" : "OFF"}
+              </span>
             </button>
 
             <button
@@ -595,11 +601,16 @@ const PreviewSection = ({ onOpenSettings }) => {
             </button>
           </div>
 
+          {/* SETTINGS BUTTON WITH CUSTOM TOOLTIP */}
           <button
             onClick={onOpenSettings}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            className="group relative p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           >
-            <Settings2 className="w-5 h-5" />
+            <Settings className="w-5 h-5" />
+            {/* Custom Tooltip - Aligned Right */}
+            <span className="absolute top-full mt-2 right-0 px-2 py-1 bg-slate-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
+              Viewable Column Settings
+            </span>
           </button>
         </div>
       </div>
